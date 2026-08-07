@@ -1,0 +1,85 @@
+import { prisma } from '../utils/prisma';
+import { ROLES } from '../config/roles';
+import { resolveOwnFaculty } from './faculty-lookup.util';
+import { dayOfWeekName, formatHHMM, type ChatReply } from '../utils/response';
+import type { HandlerContext } from '../intent/intent.types';
+
+const TODAY = () => new Date().getDay(); // 0=Sunday..6=Saturday — matches timetable_slots.day_of_week (1=Mon..6=Sat)
+
+/**
+ * get_timetable — student (own class, today) / faculty (own schedule,
+ * today) / admin (asks for a class, since "today's timetable" is ambiguous
+ * for a role with no class of their own).
+ *
+ * Mirrors EOS-backend's GET /me/timetable and GET /me/classes/today
+ * exactly, just scoped to "today" to match the conversational format the
+ * brief asks for ("Today's classes are: • Data Structures – 9:00 AM ...").
+ */
+export async function getTimetable({ user }: HandlerContext): Promise<ChatReply> {
+  if (user.role === ROLES.STUDENT) {
+    return studentTimetableToday(user.sub);
+  }
+  if (user.role === ROLES.FACULTY) {
+    return facultyTimetableToday(user.sub);
+  }
+  return {
+    reply: 'Which class would you like the timetable for? Please include the class name in your question.',
+    intent: 'get_timetable',
+    confidence: 1,
+  };
+}
+
+async function studentTimetableToday(userId: number): Promise<ChatReply> {
+  const student = await prisma.students.findUnique({ where: { user_id: userId }, select: { class_id: true } });
+
+  if (!student?.class_id) {
+    return { reply: "You haven't been assigned to a class yet, so I can't show a timetable.", intent: 'get_timetable', confidence: 1 };
+  }
+
+  const day = TODAY();
+  const slots = await prisma.timetable_slots.findMany({
+    where: { class_id: student.class_id, day_of_week: day },
+    orderBy: { period_number: 'asc' },
+    select: { start_time: true, subjects: { select: { name: true } } },
+  });
+
+  return formatDaySchedule(day, slots.map((s) => ({ subject: s.subjects.name, start_time: s.start_time })));
+}
+
+async function facultyTimetableToday(userId: number): Promise<ChatReply> {
+  const faculty = await resolveOwnFaculty(userId);
+  if (!faculty) {
+    return { reply: "I couldn't find a faculty profile linked to your account.", intent: 'get_timetable', confidence: 1 };
+  }
+
+  const day = TODAY();
+  const slots = await prisma.timetable_slots.findMany({
+    where: { faculty_id: faculty.id, day_of_week: day },
+    orderBy: { period_number: 'asc' },
+    select: {
+      start_time: true,
+      subjects: { select: { name: true } },
+      classes: { select: { section: true } },
+    },
+  });
+
+  return formatDaySchedule(
+    day,
+    slots.map((s) => ({ subject: `${s.subjects.name} (${s.classes.section})`, start_time: s.start_time })),
+  );
+}
+
+function formatDaySchedule(day: number, slots: Array<{ subject: string; start_time: Date }>): ChatReply {
+  if (slots.length === 0) {
+    const reply =
+      day === 0 || day === 6
+        ? `No classes today (${dayOfWeekName(day)}).`
+        : `No timetable entries found for today (${dayOfWeekName(day)}).`;
+    return { reply, intent: 'get_timetable', confidence: 1, data: { day_of_week: day, slots: [] } };
+  }
+
+  const lines = slots.map((s) => `• ${s.subject} – ${formatHHMM(s.start_time)}`);
+  const reply = `Today's classes are:\n\n${lines.join('\n')}`;
+
+  return { reply, intent: 'get_timetable', confidence: 1, data: { day_of_week: day, slots } };
+}

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+generated/
+src/embeddings/*.json
+!src/embeddings/.gitkeep
+.transformers-cache/
+*.log
+.DS_Store
