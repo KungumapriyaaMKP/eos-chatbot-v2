@@ -71,26 +71,101 @@
     justify-content: center;
     padding: 24px;
   }
-  .card {
+  /*
+   * Split auth panel — structure taken from the auth-switch reference
+   * (branding/pitch panel on one side, the sign-in form on the other),
+   * recolored to this app's black + blue theme instead of the reference's
+   * purple gradient + white panel. Two adaptations from the reference,
+   * deliberate, not oversights:
+   *  - the branding panel has no "Sign Up" CTA — this app only ever
+   *    authenticates existing EOS backend users, there's no registration
+   *    flow to link to.
+   *  - no social-login icons — the backend has no OAuth providers wired up
+   *    at all, so buttons for them would do nothing. Left out rather than
+   *    shipped as dead decoration.
+   */
+  .auth-card {
+    display: flex;
+    width: 100%;
+    max-width: 840px;
+    min-height: 480px;
+    border: 1px solid var(--border);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    overflow: hidden; /* clips the panels' own slide-in so nothing flashes outside the card edge mid-animation */
+  }
+  /*
+   * Entrance animation — no toggle (there's no sign-up flow to switch to,
+   * see the comment on #login-screen below), just the two panels
+   * converging into place on load: left panel slides in from the left,
+   * right panel from the right, the right one slightly delayed so it
+   * reads as sequential rather than both snapping in at once.
+   * .auth-card-animate is added by JS every time the login screen becomes
+   * visible (see showLogin()/the initial-load check) — a plain CSS
+   * animation on a static class only ever plays once, and this screen can
+   * become visible again after a logout, so it needs to be retriggered.
+   */
+  .auth-card-animate .auth-panel-left { animation: authPanelInLeft 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .auth-card-animate .auth-panel-right { animation: authPanelInRight 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; animation-delay: 0.12s; }
+  @keyframes authPanelInLeft {
+    from { opacity: 0; transform: translateX(-32px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes authPanelInRight {
+    from { opacity: 0; transform: translateX(32px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .auth-card-animate .auth-panel-left, .auth-card-animate .auth-panel-right { animation: none; }
+  }
+  .auth-panel-left {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 14px;
+    padding: 44px 40px;
+    background: linear-gradient(160deg, #0a0a0c 0%, #101a3a 55%, var(--user-bubble) 130%);
+    color: #ffffff;
+  }
+  .auth-panel-left h1 {
+    font-size: 30px;
+    font-weight: 700;
+    margin: 0;
+    line-height: 1.2;
+  }
+  .auth-panel-left p {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.6;
+    color: rgba(255,255,255,0.82);
+    max-width: 320px;
+  }
+  .auth-panel-right {
+    flex: 1;
     background: var(--panel);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
-    border: 1px solid var(--border);
-    border-radius: 0;
-    padding: 28px;
-    width: 100%;
-    max-width: 380px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    padding: 44px 40px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
   }
-  .card h1 {
-    font-size: 22px;
+  .auth-panel-right h1 {
+    font-size: 24px;
     margin: 0 0 4px;
-    font-weight: 600;
+    font-weight: 700;
+    text-align: center;
   }
-  .card p.sub {
-    margin: 0 0 20px;
+  .auth-panel-right p.sub {
+    margin: 0 0 22px;
     color: var(--muted);
     font-size: 13px;
+    text-align: center;
+  }
+  @media (max-width: 640px) {
+    .auth-card { flex-direction: column; max-width: 420px; }
+    .auth-panel-left { padding: 32px 28px; }
+    .auth-panel-right { padding: 32px 28px; }
   }
   label {
     display: block;
@@ -365,25 +440,36 @@
 
   <!-- LOGIN -->
   <div id="login-screen">
-    <div class="card">
-      <h1>EOS Assistant</h1>
-      <p class="sub">Temporary test login. See src/auth/README.md</p>
+    <div class="auth-card">
+      <div class="auth-panel-left">
+        <h1>EOS Assistant</h1>
+        <p>
+          Your college ERP, in plain English. Ask about attendance, marks,
+          timetable, fees, announcements, and more — answered straight from
+          your college's own records.
+        </p>
+      </div>
 
-      <form id="login-form">
-        <label for="email">Email</label>
-        <input id="email" type="email" autocomplete="username" required />
+      <div class="auth-panel-right">
+        <h1>Sign in</h1>
+        <p class="sub">Temporary test login. See src/auth/README.md</p>
 
-        <label for="password">Password</label>
-        <div class="password-field">
-          <input id="password" type="password" autocomplete="current-password" required />
-          <button type="button" id="toggle-password" aria-label="Show password">
-            <span class="icon" data-icon="eye"></span>
-          </button>
-        </div>
+        <form id="login-form">
+          <label for="email">Email</label>
+          <input id="email" type="email" autocomplete="username" required />
 
-        <button class="btn-primary" type="submit" id="login-btn">Log in</button>
-        <div id="login-error"></div>
-      </form>
+          <label for="password">Password</label>
+          <div class="password-field">
+            <input id="password" type="password" autocomplete="current-password" required />
+            <button type="button" id="toggle-password" aria-label="Show password">
+              <span class="icon" data-icon="eye"></span>
+            </button>
+          </div>
+
+          <button class="btn-primary" type="submit" id="login-btn">Log in</button>
+          <div id="login-error"></div>
+        </form>
+      </div>
     </div>
   </div>
 
