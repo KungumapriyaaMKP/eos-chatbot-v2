@@ -10,18 +10,24 @@
 <style>
   :root {
     --moon-bg: #0a0a0c;
-    --panel: rgba(20, 20, 24, 0.6);
+    /* Raised from 0.6 -> 0.92 opacity, and bot-bubble/input-box similarly
+       below: the previous, more translucent panels let the bright part of
+       the moon-glow background show through enough to wash out text
+       sitting on them, wherever they happened to land on the page. Solid
+       panels make every bit of text on them legible regardless of what's
+       behind, instead of fixing one washed-out spot at a time. */
+    --panel: rgba(16, 16, 20, 0.92);
     --panel-solid: #17171b;
-    --border: rgba(255, 255, 255, 0.12);
-    --text: #f2f2f3;
-    --muted: #a3a3a8;
+    --border: rgba(255, 255, 255, 0.14);
+    --text: #f5f5f6;
+    --muted: #b7b7bd;
     --accent: #ffffff;
     --accent-ink: #0a0a0c;
-    --bot-bubble: rgba(38, 38, 43, 0.85);
+    --bot-bubble: rgba(30, 30, 35, 0.94);
     --user-bubble: #3b6ef6;
     --user-ink: #ffffff;
     --danger: #ff6b6b;
-    --danger-bg: rgba(255, 107, 107, 0.12);
+    --danger-bg: rgba(50, 18, 18, 0.92);
   }
   * { box-sizing: border-box; }
   html, body {
@@ -34,14 +40,28 @@
     background: var(--moon-bg) url('https://pub-940ccf6255b54fa799a9b01050e6c227.r2.dev/ruixen_moon_2.png') center / cover no-repeat fixed;
   }
   #app {
-    max-width: 760px;
-    margin: 0 auto;
+    width: 100%;
     height: 100%;
     display: flex;
     flex-direction: column;
   }
-  .icon { width: 16px; height: 16px; flex: none; }
-  .icon svg { width: 100%; height: 100%; }
+  /*
+   * The header is the one element meant to reach the true edges of the
+   * browser window (see below) — everything else that needs to stay
+   * readable on a wide screen (login card, chat bubbles, the input box)
+   * constrains itself individually to this width and centers with
+   * `margin: 0 auto`, rather than #app doing it for everything.
+   */
+  .content-width { max-width: 760px; margin: 0 auto; width: 100%; }
+  .icon {
+    width: 16px;
+    height: 16px;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .icon svg { width: 100%; height: 100%; display: block; }
 
   /* ---------- Login screen ---------- */
   #login-screen {
@@ -142,16 +162,17 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 20px;
+    padding: 14px 24px;
     background: var(--panel);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
     border-bottom: 1px solid var(--border);
   }
-  header .who { display: flex; flex-direction: column; }
-  header .who .name { font-weight: 600; font-size: 14px; }
+  header .who { display: flex; flex-direction: column; gap: 3px; }
+  header .who .name { font-weight: 600; font-size: 14px; line-height: 1; }
   header .who .role {
     font-size: 11px;
+    line-height: 1;
     color: var(--muted);
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -159,17 +180,21 @@
   #logout-btn {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
+    height: 34px;
     background: transparent;
     color: var(--muted);
     border: 1px solid var(--border);
-    padding: 7px 12px;
+    padding: 0 14px;
     border-radius: 0;
     font-size: 12px;
+    line-height: 1;
   }
   #logout-btn:hover { color: var(--text); border-color: var(--muted); }
 
   #chat-body {
+    position: relative;
     flex: 1;
     min-height: 0;
     display: flex;
@@ -177,9 +202,18 @@
     overflow-y: auto;
   }
 
-  /* Empty-state hero, shown only before the first message */
+  /*
+   * Empty-state hero, shown only before the first message. Positioned
+   * absolutely over the full #chat-body area rather than as a flex sibling
+   * of #messages — as flex siblings, both #empty-state and #messages
+   * (each flex: 1) would split the available height 50/50 even while
+   * #messages is empty, centering the hero within only the top half of the
+   * page instead of the whole thing. Taking it out of the flow sidesteps
+   * that entirely.
+   */
   #empty-state {
-    flex: 1;
+    position: absolute;
+    inset: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -195,8 +229,9 @@
   }
   #empty-state p {
     margin: 10px 0 26px;
-    color: var(--muted);
+    color: #e2e2e6;
     font-size: 14px;
+    text-shadow: 0 1px 8px rgba(0,0,0,0.8), 0 1px 2px rgba(0,0,0,0.9);
   }
   .quick-actions {
     display: flex;
@@ -216,7 +251,7 @@
     padding: 0 16px;
     border-radius: 0;
     border: 1px solid var(--border);
-    background: rgba(0,0,0,0.4);
+    background: rgba(0,0,0,0.72);
     color: var(--muted);
     font-size: 12.5px;
     line-height: 1;
@@ -224,7 +259,6 @@
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
   }
-  .quick-action .icon { display: flex; align-items: center; justify-content: center; }
   .quick-action:hover { color: var(--text); background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.25); }
 
   #messages {
@@ -257,11 +291,22 @@
     border: 1px solid var(--border);
   }
   .row.bot .bubble.error { background: var(--danger-bg); color: var(--danger); border-color: rgba(255,107,107,0.3); }
+  .bubble.typing-caret::after {
+    content: '';
+    display: inline-block;
+    width: 2px;
+    height: 13px;
+    margin-left: 2px;
+    vertical-align: -2px;
+    background: var(--text);
+    animation: caret-blink 0.8s step-end infinite;
+  }
+  @keyframes caret-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
   /* Input box, styled after the reference design */
   #composer-wrap { padding: 16px 20px 20px; }
   #input-box {
-    background: rgba(0,0,0,0.6);
+    background: rgba(0,0,0,0.85);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
     border: 1px solid var(--border);
@@ -285,21 +330,9 @@
   #composer-footer {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     padding: 6px 10px 10px;
   }
-  .icon-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 34px;
-    height: 34px;
-    border-radius: 0;
-    background: transparent;
-    color: var(--muted);
-    border: none;
-  }
-  .icon-btn:hover:not(:disabled) { background: rgba(255,255,255,0.08); color: var(--text); }
   #send-btn {
     display: flex;
     align-items: center;
@@ -373,17 +406,14 @@
         <p>Ask about your attendance, marks, timetable, fees, and more.</p>
         <div class="quick-actions" id="quick-actions"></div>
       </div>
-      <div id="messages"></div>
+      <div id="messages" class="content-width"></div>
     </div>
 
-    <div id="composer-wrap">
+    <div id="composer-wrap" class="content-width">
       <form id="composer">
         <div id="input-box">
           <textarea id="message-input" rows="1" placeholder="Ask about attendance, marks, timetable, fees…" autocomplete="off"></textarea>
           <div id="composer-footer">
-            <button type="button" class="icon-btn" disabled title="Attachments aren't supported yet">
-              <span class="icon" data-icon="paperclip"></span>
-            </button>
             <button type="submit" id="send-btn" disabled>
               <span class="icon" data-icon="arrow-up"></span>
               <span class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;">Send</span>
@@ -401,7 +431,6 @@
   // Minimal inline icon set (lucide-style: 24x24, stroke-based) — no icon
   // library dependency, matching this page's zero-build-step design.
   var ICONS = {
-    'paperclip': '<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
     'arrow-up': '<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',
     'log-out': '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>',
     'calendar-check': '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/>',
@@ -492,11 +521,34 @@
     }
   });
 
+  // Persists the visible conversation (not just the login token) so a page
+  // refresh mid-chat doesn't wipe it — sessionStorage clears itself when the
+  // tab closes, matching "remembers this chat session", not forever.
+  var HISTORY_KEY = 'chatbot_history';
+  var HISTORY_LIMIT = 50;
+
+  function saveMessage(role, text) {
+    var history = JSON.parse(sessionStorage.getItem(HISTORY_KEY) || '[]');
+    history.push({ role: role, text: text });
+    if (history.length > HISTORY_LIMIT) {
+      history = history.slice(history.length - HISTORY_LIMIT);
+    }
+    sessionStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+  }
+
+  function restoreMessages() {
+    var history = JSON.parse(sessionStorage.getItem(HISTORY_KEY) || '[]');
+    history.forEach(function (m) {
+      addBubble(m.role, m.text, { instant: true, persist: false });
+    });
+  }
+
   function showChat() {
     loginScreen.style.display = 'none';
     chatScreen.style.display = 'flex';
     whoName.textContent = state.user.name;
     whoRole.textContent = state.user.role;
+    restoreMessages();
     messageInput.focus();
   }
 
@@ -505,6 +557,29 @@
     loginScreen.style.display = 'flex';
     messagesEl.innerHTML = '';
     emptyState.style.display = 'flex';
+    sessionStorage.removeItem(HISTORY_KEY);
+  }
+
+  // Reveals `text` a few characters at a time, like the bot is typing it —
+  // tick rate is fixed but the chunk size scales with length, so a short
+  // reply still feels like real typing and a long one doesn't drag on forever.
+  function typeIntoBubble(bubble, text) {
+    var total = text.length;
+    var tickMs = 16;
+    var targetMs = Math.min(1800, 500 + total * 6);
+    var chunk = Math.max(1, Math.ceil(total / (targetMs / tickMs)));
+    var i = 0;
+
+    bubble.classList.add('typing-caret');
+    var timer = setInterval(function () {
+      i = Math.min(total, i + chunk);
+      bubble.textContent = text.slice(0, i);
+      chatBody.scrollTop = chatBody.scrollHeight;
+      if (i >= total) {
+        clearInterval(timer);
+        bubble.classList.remove('typing-caret');
+      }
+    }, tickMs);
   }
 
   function addBubble(role, text, meta) {
@@ -517,9 +592,22 @@
 
     var bubble = document.createElement('div');
     bubble.className = 'bubble' + (meta && meta.isError ? ' error' : '');
-    bubble.textContent = text;
     row.appendChild(bubble);
     messagesEl.appendChild(row);
+
+    var shouldAnimate = role === 'bot' && !(meta && (meta.isError || meta.instant));
+    if (shouldAnimate) {
+      typeIntoBubble(bubble, text);
+    } else {
+      bubble.textContent = text;
+    }
+
+    // Errors are transient (network hiccups, expired sessions) and restored
+    // history shouldn't re-save itself — everything else is real
+    // conversation content worth remembering across a refresh.
+    if (!meta || (!meta.isError && meta.persist !== false)) {
+      saveMessage(role, text);
+    }
 
     chatBody.scrollTop = chatBody.scrollHeight;
   }

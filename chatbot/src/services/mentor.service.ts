@@ -1,25 +1,25 @@
 import { prisma } from '../utils/prisma';
-import { ROLES } from '../config/roles';
-import { resolveTargetStudent, adminLookupPrompt, NO_LINKED_STUDENT_MESSAGE } from './student-lookup.util';
+import { resolveTargetStudent, notFoundReply, possessive } from './student-lookup.util';
 import { NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 
 /**
- * get_mentor — student (own) / admin (any student). Reads class_mentors,
- * the same table EOS-backend's own announcements/faculty-classes scoping
- * already relies on elsewhere — the class mentor is just whichever faculty
- * row is mapped to the student's class for the most recent academic_year.
+ * get_mentor — student (own) / parent (own child) / admin (any student).
+ * Reads class_mentors, the same table EOS-backend's own
+ * announcements/faculty-classes scoping already relies on elsewhere — the
+ * class mentor is just whichever faculty row is mapped to the student's
+ * class for the most recent academic_year.
  */
 export async function getMentor({ user, message }: HandlerContext): Promise<ChatReply> {
-  const { student: target, forbidden } = await resolveTargetStudent(user, message);
+  const result = await resolveTargetStudent(user, message);
+  const { student: target, forbidden } = result;
 
   if (forbidden) {
     return { reply: NO_PERMISSION_MESSAGE, intent: 'get_mentor', confidence: 1 };
   }
 
   if (!target) {
-    const reply = user.role === ROLES.ADMIN ? adminLookupPrompt('their class mentor') : NO_LINKED_STUDENT_MESSAGE;
-    return { reply, intent: 'get_mentor', confidence: 1 };
+    return { reply: notFoundReply(user, result, 'their class mentor'), intent: 'get_mentor', confidence: 1 };
   }
 
   if (!target.class_id) {
@@ -50,7 +50,7 @@ export async function getMentor({ user, message }: HandlerContext): Promise<Chat
     return { reply: `No class mentor has been assigned for ${target.name}'s class yet.`, intent: 'get_mentor', confidence: 1 };
   }
 
-  const who = user.role === ROLES.ADMIN ? `${target.name}'s` : 'Your';
+  const who = possessive(user, target);
   const f = mapping.faculty;
 
   const reply =

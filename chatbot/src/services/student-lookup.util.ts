@@ -1,6 +1,7 @@
 import { prisma } from '../utils/prisma';
 import { ROLES } from '../config/roles';
 import { fuzzyFindBest } from '../utils/fuzzy';
+import { getSessionContext, updateSessionContext } from '../intent/session-context';
 import type { JwtPayload } from '../auth/jwt-payload.interface';
 
 export interface ResolvedStudent {
@@ -13,14 +14,22 @@ export interface ResolvedStudent {
 export interface StudentLookupResult {
   student: ResolvedStudent | null;
   /**
-   * True only when a non-admin caller's message named a *different*, real
-   * student by ID/roll/register number. `student` is null in that case —
-   * the caller must never silently see someone else's data, and must never
-   * silently be handed their OWN data either when they clearly asked about
-   * someone else (that would just look broken, not secure). The handler
-   * should return the standard NO_PERMISSION_MESSAGE.
+   * True only when a non-admin/non-coe caller's message named a
+   * *different*, real student by ID/roll/register number — someone who
+   * isn't themselves (student role) or their own child (parent role).
+   * `student` is null in that case — the caller must never silently see
+   * someone else's data, and must never silently be handed their OWN data
+   * either when they clearly asked about someone else (that would just
+   * look broken, not secure). The handler should return the standard
+   * NO_PERMISSION_MESSAGE.
    */
   forbidden: boolean;
+  /**
+   * Populated only for a parent with MORE THAN ONE linked child when the
+   * message didn't say which one — lets the handler ask "which child?"
+   * by name instead of the generic admin-style prompt.
+   */
+  candidates?: ResolvedStudent[];
 }
 
 const STUDENT_SELECT = {
@@ -99,8 +108,80 @@ async function resolveOwnStudent(userId: number, message: string): Promise<Stude
 }
 
 /**
- * Admin is the dataset's one LOOKUP_CAPABLE_ROLE — the only role allowed to
- * ask about a student instead of themselves. Two passes:
+ * A parent's records are always one of THEIR OWN linked children
+ * (parent_student_mapping) — never an arbitrary student, mirroring the
+ * student self-scoping above but for "my child" instead of "myself".
+ *
+ *  - Exactly one linked child → always that child, message ignored (same
+ *    "auto-pick the only option" convention used for a faculty member who
+ *    mentors only one class elsewhere in this codebase).
+ *  - Multiple children → tries to match one by ID/roll/register/name in
+ *    the message; if the message doesn't name one, returns no student AND
+ *    the candidate list, so the handler can ask "which child?" by name.
+ *  - A message naming a real student who ISN'T one of their children is
+ *    forbidden outright, exactly like the student-role backstop above.
+ *  - No linked children at all → nothing found (their account simply
+ *    isn't a parent of any enrolled student).
+ */
+async function resolveParentChild(userId: number, message: string): Promise<StudentLookupResult> {
+  const mappings = await prisma.parent_student_mapping.findMany({
+    where: { parent_user_id: userId },
+    select: { students: { select: STUDENT_SELECT } },
+  });
+  const children = mappings.map((m) => m.students);
+
+  if (children.length === 0) {
+    return { student: null, forbidden: false };
+  }
+
+  const idLikeTokens = message.match(ID_LIKE_PATTERN) ?? [];
+  for (const token of idLikeTokens) {
+    const ownChild = children.find(
+      (c) =>
+        c.student_id_no.toLowerCase() === token.toLowerCase() ||
+        c.roll_no?.toLowerCase() === token.toLowerCase() ||
+        c.register_no?.toLowerCase() === token.toLowerCase(),
+    );
+    if (ownChild) continue;
+    const other = await findByExactId(token);
+    if (other) {
+      return { student: null, forbidden: true };
+    }
+  }
+
+  if (children.length === 1) {
+    return { student: toResolved(children[0]), forbidden: false };
+  }
+
+  const byExactId = idLikeTokens
+    .map((t) =>
+      children.find(
+        (c) =>
+          c.student_id_no.toLowerCase() === t.toLowerCase() ||
+          c.roll_no?.toLowerCase() === t.toLowerCase() ||
+          c.register_no?.toLowerCase() === t.toLowerCase(),
+      ),
+    )
+    .find(Boolean);
+  if (byExactId) {
+    return { student: toResolved(byExactId), forbidden: false };
+  }
+
+  const fuzzy = fuzzyFindBest(message, children, (c) => ({
+    codes: [c.student_id_no, c.roll_no, c.register_no].filter((v): v is string => Boolean(v)),
+    name: studentName(c),
+  }));
+  if (fuzzy) {
+    return { student: toResolved(fuzzy), forbidden: false };
+  }
+
+  return { student: null, forbidden: false, candidates: children.map(toResolved) };
+}
+
+/**
+ * Admin (and COE, for the one intent — get_exam_schedule — the dataset
+ * grants it to) is a LOOKUP_CAPABLE_ROLE — allowed to ask about a student
+ * instead of themselves. Two passes:
  *
  *  1. Fast, exact path — pulls ID-shaped tokens (contains a digit) out of
  *     the message and checks them against student_id_no/roll_no/register_no
@@ -134,8 +215,14 @@ async function resolveStudentByFreeText(message: string): Promise<ResolvedStuden
  *   - student → always their own record, UNLESS the message names a
  *     different real student, in which case the request is forbidden
  *     outright (see resolveOwnStudent above)
- *   - admin   → the student named in the message, by name, ID, roll, or
- *     register number, fuzzy-matched to tolerate typos
+ *   - parent  → always one of their OWN linked children (see
+ *     resolveParentChild above) — never an arbitrary student
+ *   - admin / coe → the student named in the message, by name, ID, roll,
+ *     or register number, fuzzy-matched to tolerate typos — and if THIS
+ *     message doesn't name anyone, falls back to whichever student this
+ *     chat session last resolved (see src/intent/session-context.ts), so
+ *     "marks of 23IT001" followed by "what about their attendance" doesn't
+ *     require repeating the ID
  *   - anyone else → nothing found (RBAC already should have blocked the
  *     intent before a handler runs, so this is just a defensive fallback)
  */
@@ -143,21 +230,85 @@ export async function resolveTargetStudent(user: JwtPayload, message: string): P
   if (user.role === ROLES.STUDENT) {
     return resolveOwnStudent(user.sub, message);
   }
-  if (user.role === ROLES.ADMIN) {
-    return { student: await resolveStudentByFreeText(message), forbidden: false };
+
+  if (user.role === ROLES.PARENT) {
+    return resolveParentChild(user.sub, message);
   }
+
+  if (user.role === ROLES.ADMIN || user.role === ROLES.COE) {
+    let resolved = await resolveStudentByFreeText(message);
+
+    if (!resolved) {
+      const ctx = getSessionContext(user.sub);
+      if (ctx?.lastStudentId) {
+        const row = await prisma.students.findUnique({ where: { id: ctx.lastStudentId }, select: STUDENT_SELECT });
+        resolved = row ? toResolved(row) : null;
+      }
+    }
+
+    if (resolved) {
+      updateSessionContext(user.sub, { lastStudentId: resolved.id });
+    }
+
+    return { student: resolved, forbidden: false };
+  }
+
   return { student: null, forbidden: false };
 }
 
+/** True for any role that looks up OTHER people's data (vs. always-self roles like student). */
+export function isLookupRole(role: string): boolean {
+  return role === ROLES.ADMIN || role === ROLES.COE;
+}
+
 /**
- * The consistent "I need more information" reply every admin-lookup handler
- * falls back to when resolveTargetStudent finds no student and the caller
- * is admin. `resource` should read naturally after "look up", e.g.
- * "their attendance", "their fee status".
+ * The consistent "I need more information" reply every admin/coe-lookup
+ * handler falls back to when resolveTargetStudent finds no student.
+ * `resource` should read naturally after "look up", e.g. "their attendance".
  */
 export function adminLookupPrompt(resource: string): string {
   return `Which student did you mean? Tell me their name, student ID, roll number, or register number, and I'll look up ${resource}.`;
 }
 
+/** The "which of your children?" prompt for a parent with more than one linked child and none named in the message. */
+export function parentLookupPrompt(resource: string, candidates: ResolvedStudent[]): string {
+  const names = candidates.map((c) => c.name);
+  const list = names.length <= 1 ? names[0] : `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`;
+  return `Which of your children did you mean, ${list}? Tell me their name and I'll look up ${resource}.`;
+}
+
 /** The reply for a non-admin caller with no linked student record (should be rare, but handled gracefully). */
 export const NO_LINKED_STUDENT_MESSAGE = "I couldn't find a student record linked to your account.";
+
+/** The reply for a parent with no children linked to their account at all (distinct from "which child?"). */
+export const NO_LINKED_CHILDREN_MESSAGE = "I couldn't find any students linked to your parent account.";
+
+/**
+ * The single place every "get_*" handler asks "okay, but who?" once
+ * resolveTargetStudent comes back with no student — covers all four
+ * reasons that can happen (ambiguous parent, no linked children, no linked
+ * student, or a lookup-capable role that just needs a name/ID) with the
+ * right message for each, instead of every handler re-deriving this logic.
+ */
+export function notFoundReply(user: JwtPayload, result: StudentLookupResult, resource: string): string {
+  if (result.candidates && result.candidates.length > 0) {
+    return parentLookupPrompt(resource, result.candidates);
+  }
+  if (user.role === ROLES.PARENT) {
+    return NO_LINKED_CHILDREN_MESSAGE;
+  }
+  if (isLookupRole(user.role)) {
+    return adminLookupPrompt(resource);
+  }
+  return NO_LINKED_STUDENT_MESSAGE;
+}
+
+/** "Your" for the student themselves, or "Ganesh A.'s" for anyone looking up someone else's (admin/coe/parent). */
+export function possessive(user: JwtPayload, target: ResolvedStudent): string {
+  return user.role === ROLES.STUDENT ? 'Your' : `${target.name}'s`;
+}
+
+/** "You have attended..." vs "They have attended..." — pairs with possessive() above. */
+export function subjectPronoun(user: JwtPayload): 'You' | 'They' {
+  return user.role === ROLES.STUDENT ? 'You' : 'They';
+}

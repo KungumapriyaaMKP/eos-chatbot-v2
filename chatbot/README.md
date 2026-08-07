@@ -80,17 +80,69 @@ these three handlers to call them over HTTP instead (same pattern as
 `src/services/timetable.service.ts` already follows conceptually) and delete
 the direct-Prisma queries. Nothing else needs to change.
 
-### One schema patch
+### Known EOS-backend security issues (not fixed here — different repo)
 
-`EOS-backend/prisma/schema.prisma` (as of this chatbot's `prisma/schema.prisma`
-copy) fails `prisma generate` validation as-is: the `e_resources.users`
-relation has no opposite field declared on the `users` model. This is a
-pre-existing bug in the backend's schema file, not something this project
-introduced — confirmed by running `prisma generate` against the untouched
-backend checkout. `prisma/schema.prisma` here has ONE line added (an
-`e_resources e_resources[]` back-relation on `model users`) purely so the
-Prisma Client can be generated; **no table/column/enum changed**. Worth
-fixing upstream in EOS-backend too.
+Found while studying the backend to build this chatbot. Deliberately **not
+patched** — `EOS-backend` is a separate repository this project only reads
+from, and fixing it wasn't part of this engagement. Flagging both clearly so
+they don't get lost:
+
+1. **`GET /exam-marks` has no authentication guard at all.**
+   `src/modules/exams/marks/marks.controller.ts` — the `@Post`/`@Patch`/`@Delete`
+   handlers are `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles(ROLES.FACULTY)`,
+   but `@Get()` and `@Get(':id')` have **no guards at all**. Anyone who can
+   reach the server — no token, no login — can call this endpoint and read
+   every student's every mark. (This chatbot never calls that route; it
+   reads `exam_marks` directly via Prisma with its own RBAC in front of it —
+   see the table above.) **Fix:** add `@UseGuards(JwtAuthGuard, RolesGuard)`
+   to the controller class or those two handlers specifically, matching every
+   other read-sensitive endpoint in the codebase.
+
+2. **Passwords are hashed with unsalted SHA-256**, not a proper password
+   hash. `src/auth/auth.service.ts`: `crypto.createHash('sha256').update(dto.password).digest('hex')`,
+   compared directly against `users.password_hash`. SHA-256 is a fast,
+   general-purpose hash — designed to be computed quickly, which is exactly
+   the wrong property for a password hash. No salt means two users with the
+   same password get the identical `password_hash` value, and the whole
+   `users` table is one rainbow-table lookup away from mass-cracking if it's
+   ever exposed. (This chatbot's own temporary login in `src/auth/` replicates
+   this exact scheme deliberately, purely for compatibility with the existing
+   `password_hash` column — see `src/utils/password.ts`'s comment. If the
+   backend's scheme changes, that file needs to change with it.) **Fix:**
+   migrate to `bcrypt`/`argon2` with a per-user salt (Node has `bcrypt`/
+   `argon2` packages for this); requires a migration path for existing
+   `password_hash` values (e.g. rehash on next successful login).
+
+### Schema patches (local copy only — the live database was never touched)
+
+`EOS-backend/prisma/schema.prisma`, as checked into that repo, doesn't
+fully match either Prisma's own validation rules or the actual deployed
+database. Neither issue was introduced by this project — both were found
+while building it and are patched **only** in this chatbot's own
+`prisma/schema.prisma` copy, purely so `prisma generate` succeeds and reads
+line up with real columns:
+
+1. **`e_resources.users` relation has no opposite field** on `model users`
+   — fails `prisma generate` validation as-is (confirmed against the
+   untouched backend checkout). Fixed with one added line
+   (`e_resources e_resources[]` on `model users`).
+2. **The live database has drifted from the checked-in schema** — e.g.
+   `exam_timetable.is_published` is declared in the schema but doesn't
+   exist on the real table at all (confirmed via `information_schema`);
+   the actual publish flag turned out to live one join up, on
+   `exam_subject_mapping.is_published`/`published_at`/`is_elective`, which
+   also aren't in the checked-in schema. Added those three fields to this
+   copy so `get_exam_schedule` (`src/services/exam-schedule.service.ts`)
+   can filter on the real column instead of a nonexistent one. Several
+   other tables have live columns beyond what the checked-in schema
+   declares too (faculty has ~30 extra fields, for one) — none of those
+   are used by this chatbot, so they weren't added here, but it's worth
+   knowing the drift isn't limited to just this one column.
+
+**No table/column/enum was added, removed, or renamed on the actual
+database** — every change here only teaches the local Prisma Client about
+columns that already exist live. Worth reconciling upstream in EOS-backend
+too (regenerate `schema.prisma` from the real database, or vice versa).
 
 ## Project structure
 
@@ -249,13 +301,17 @@ gap. Both scripts back up the original `.docx` to `.docx.bak` before writing.
 Real backend integration is wired up for a curated set covering every role
 and several ERP modules (see `src/intent/intent.registry.ts`):
 
-- **Student self-service** (also admin, via register-number lookup):
+- **Student self-service** — also admin/coe (register-number lookup) and
+  parent (their own linked child, via `parent_student_mapping`):
   `get_profile`, `get_attendance`, `get_timetable`, `get_marks`, `get_fees`,
   `get_exam_schedule`, `get_announcements`, `get_my_subjects`, `get_mentor`,
   `get_holidays`
 - **Universal**: `library_hours`
-- **Faculty**: `faculty_my_classes`, `faculty_class_attendance`, `section_students`
-- **Admin**: `admin_list_students`, `admin_list_faculty`
+- **Faculty** (also hod, who has their own linked faculty record like any
+  other teaching staff): `faculty_my_classes`, `faculty_class_attendance`,
+  `section_students`
+- **Admin** (also hod, forced to their own department — see
+  `admin-directory.service.ts`): `admin_list_students`, `admin_list_faculty`
 - **Utility / safety** (no DB access): `greeting`, `help`, `thanks`, `goodbye`,
   `bot_identity`, `wrong_answer`, `human_handoff`, `feedback_positive`,
   `abuse`, `injection_attempt`, `emergency_or_distress`
@@ -264,6 +320,43 @@ and several ERP modules (see `src/intent/intent.registry.ts`):
 - **Real need, no backing data — honest redirect**: `password_reset`,
   `general_facilities`, `admissions_info` (distinct from `admin_admission_status`,
   which checks an *existing* application's status for admin)
+
+### RBAC beyond student/faculty/admin
+
+The live database has **27 distinct roles** (`hod`, `coe`, `parent`,
+`librarian`, `warden`, `management`, `principal`, ...) — the original
+dataset only ever defined student/faculty/admin, so every other role got a
+safe but nearly useless "no permission" wall for almost everything. Extended
+RBAC (`scripts/augment-dataset-3.ts` rewrites each affected intent's
+`roles:` line in the `.docx`, then the code below honours it) to the three
+roles with real backing data and real populations in the live DB:
+
+- **`parent`** (7,201 real accounts) — full self-service-equivalent access
+  to their own linked child/children's attendance, marks (published only,
+  same as the child would see), fees, timetable, exam schedule (published
+  only), subjects, mentor, and announcements (scoped to the child's class).
+  A parent with more than one child gets asked which one by name if the
+  message doesn't say; naming a real student who ISN'T their child is
+  forbidden outright, exactly like the student-role backstop (see
+  `student-lookup.util.ts`'s `resolveParentChild`).
+- **`hod`** (15 accounts, each with their own linked `faculty` row) —
+  treated like faculty for anything tied to their own teaching (today's
+  timetable, `faculty_my_classes`), but with authority scoped to their
+  **entire department** (not just classes they personally teach/mentor) for
+  `faculty_class_attendance`, `section_students`, `admin_list_students`,
+  `admin_list_faculty`, and announcement visibility — mirroring
+  EOS-backend's own HOD visibility rule for announcements exactly.
+- **`coe`** (1 account, no linked faculty row — a pure exam-authority role)
+  — granted the same admin-style any-student lookup as admin, but only for
+  `get_exam_schedule`, matching their real backend authority (the
+  exam-timetable module is `@Roles(COE)`-only there too) rather than
+  granting blanket admin-equivalent access to everything.
+
+Every other role (librarian, warden, management, principal, ...) still
+gets a safe, honest "no permission" response for these intents — extending
+to them would mean new intents tied to their own domains (library
+management, hostel management, ...), not just an RBAC list change, and is
+future work, not something this pass claims to have covered.
 
 Every other recognised intent (hostel, transport, library, placement,
 procurement, venues, visitor logs, appraisal, payroll, invigilation, ...)

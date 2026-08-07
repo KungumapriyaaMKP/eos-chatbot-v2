@@ -1,29 +1,28 @@
 import { prisma } from '../utils/prisma';
-import { ROLES } from '../config/roles';
-import { resolveTargetStudent, adminLookupPrompt, NO_LINKED_STUDENT_MESSAGE } from './student-lookup.util';
+import { resolveTargetStudent, notFoundReply, possessive } from './student-lookup.util';
 import { formatCurrency, toDateOnly, endSentence, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 
 const HISTORY_PATTERN = /\b(history|paid so far|payment history|receipts?|transactions?)\b/i;
 
 /**
- * get_fees — student (own) / admin (any student). Every fee-billing route
- * in EOS-backend is @Roles(ADMIN)-only with no self-service path at all, so
- * there's no endpoint a student JWT could call for "my fees" today — see
- * README "Known backend gaps this chatbot works around". Reads
- * student_fee_demand_mapping + fee_payments directly, same aggregation a
- * self-service endpoint would do.
+ * get_fees — student (own) / parent (own child) / admin (any student).
+ * Every fee-billing route in EOS-backend is @Roles(ADMIN)-only with no
+ * self-service path at all, so there's no endpoint a student JWT could
+ * call for "my fees" today — see README "Known backend gaps this chatbot
+ * works around". Reads student_fee_demand_mapping + fee_payments directly,
+ * same aggregation a self-service endpoint would do.
  */
 export async function getFees({ user, message }: HandlerContext): Promise<ChatReply> {
-  const { student: target, forbidden } = await resolveTargetStudent(user, message);
+  const result = await resolveTargetStudent(user, message);
+  const { student: target, forbidden } = result;
 
   if (forbidden) {
     return { reply: NO_PERMISSION_MESSAGE, intent: 'get_fees', confidence: 1 };
   }
 
   if (!target) {
-    const reply = user.role === ROLES.ADMIN ? adminLookupPrompt('their fee status') : NO_LINKED_STUDENT_MESSAGE;
-    return { reply, intent: 'get_fees', confidence: 1 };
+    return { reply: notFoundReply(user, result, 'their fee status'), intent: 'get_fees', confidence: 1 };
   }
 
   const demands = await prisma.student_fee_demand_mapping.findMany({
@@ -40,8 +39,7 @@ export async function getFees({ user, message }: HandlerContext): Promise<ChatRe
     return { reply: endSentence(`I don't see a fee record for ${target.name}`), intent: 'get_fees', confidence: 1 };
   }
 
-  const isAdmin = user.role === ROLES.ADMIN;
-  const who = isAdmin ? `${target.name}'s` : 'Your';
+  const who = possessive(user, target);
 
   if (HISTORY_PATTERN.test(message)) {
     const payments = demands.flatMap((d) => d.fee_payments);

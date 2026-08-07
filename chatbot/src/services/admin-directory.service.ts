@@ -1,11 +1,14 @@
 import { prisma } from '../utils/prisma';
+import { ROLES } from '../config/roles';
 import { fuzzyFindBest } from '../utils/fuzzy';
 import type { ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 
 const LIST_LIMIT = 15;
 
-async function matchDepartment(message: string): Promise<{ id: number; name: string; code: string } | null> {
+type Department = { id: number; name: string; code: string };
+
+async function matchDepartment(message: string): Promise<Department | null> {
   const lower = message.toLowerCase();
   const departments = await prisma.departments.findMany({ select: { id: true, name: true, code: true } });
 
@@ -17,9 +20,28 @@ async function matchDepartment(message: string): Promise<{ id: number; name: str
   return fuzzyFindBest(message, departments, (d) => ({ codes: [d.code], name: d.name }));
 }
 
-/** admin_list_students — admin only: list students, optionally filtered by department. */
-export async function adminListStudents({ message }: HandlerContext): Promise<ChatReply> {
-  const department = await matchDepartment(message);
+/**
+ * Resolves which department to scope a directory listing to.
+ *  - hod   → ALWAYS their own department, regardless of what (if anything)
+ *    the message mentions — an HOD's authority doesn't extend past their
+ *    own department, so overriding rather than merely defaulting is the
+ *    correct enforcement here, not just a convenience.
+ *  - admin → whatever department the message names, or none (see everyone)
+ */
+async function resolveDepartmentScope(user: HandlerContext['user'], message: string): Promise<Department | null> {
+  if (user.role === ROLES.HOD) {
+    const faculty = await prisma.faculty.findUnique({
+      where: { user_id: user.sub },
+      select: { departments: { select: { id: true, name: true, code: true } } },
+    });
+    return faculty?.departments ?? null;
+  }
+  return matchDepartment(message);
+}
+
+/** admin_list_students — admin (any department) / hod (their own department only). */
+export async function adminListStudents({ user, message }: HandlerContext): Promise<ChatReply> {
+  const department = await resolveDepartmentScope(user, message);
   const scope = department ? ` in ${department.name}` : '';
 
   const [total, rows] = await Promise.all([
@@ -53,9 +75,9 @@ export async function adminListStudents({ message }: HandlerContext): Promise<Ch
   };
 }
 
-/** admin_list_faculty — admin only: list faculty, optionally filtered by department. */
-export async function adminListFaculty({ message }: HandlerContext): Promise<ChatReply> {
-  const department = await matchDepartment(message);
+/** admin_list_faculty — admin (any department) / hod (their own department only). */
+export async function adminListFaculty({ user, message }: HandlerContext): Promise<ChatReply> {
+  const department = await resolveDepartmentScope(user, message);
   const scope = department ? ` in ${department.name}` : '';
 
   const [total, rows] = await Promise.all([

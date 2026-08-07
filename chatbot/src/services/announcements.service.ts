@@ -7,12 +7,11 @@ import type { Prisma } from '../generated/prisma/client';
 const RESULT_LIMIT = 8;
 
 /**
- * get_announcements — student/faculty/admin.
+ * get_announcements — student/faculty/admin/hod/parent.
  *
  * Mirrors EOS-backend's AnnouncementsService.buildVisibilityQuery() exactly
  * (see EOS-backend/src/modules/announcements/announcements/announcements.service.ts)
- * for the student/faculty/admin branches — the only roles this intent is
- * scoped to per the training dataset. GET /announcements is already
+ * for every one of these branches — GET /announcements is already
  * correctly self-scoped server-side, so this handler exists only because
  * the chatbot reads Prisma directly rather than making an HTTP call — the
  * *rule* itself is reused, not reinvented.
@@ -68,7 +67,22 @@ async function buildVisibilityQuery(
     return { announcement_class_mapping: { some: { class_id: student?.class_id ?? -1 } } };
   }
 
-  return { id: -1 }; // default-deny for any role outside the dataset's S/F/A scope
+  if (role === ROLES.HOD) {
+    return { OR: [{ posted_by_user_id: userId }, { users: { roles: { name: ROLES.ADMIN } } }] };
+  }
+
+  if (role === ROLES.PARENT) {
+    const mappings = await prisma.parent_student_mapping.findMany({
+      where: { parent_user_id: userId },
+      select: { students: { select: { class_id: true } } },
+    });
+    const classIds = [
+      ...new Set(mappings.map((m) => m.students.class_id).filter((id): id is number => id !== null)),
+    ];
+    return { announcement_class_mapping: { some: { class_id: { in: classIds.length ? classIds : [-1] } } } };
+  }
+
+  return { id: -1 }; // default-deny for any role outside this intent's allowed roles
 }
 
 async function getAssignedClassIds(facultyId: number): Promise<number[]> {
