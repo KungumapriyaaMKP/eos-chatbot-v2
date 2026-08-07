@@ -17,7 +17,7 @@ export async function getSubjects({ user, message }: HandlerContext): Promise<Ch
   }
 
   if (!target) {
-    return { reply: notFoundReply(user, result, 'their subjects'), intent: 'get_my_subjects', confidence: 1 };
+    return { reply: notFoundReply(user, result, 'their subjects', 'get_my_subjects'), intent: 'get_my_subjects', confidence: 1 };
   }
 
   if (!target.class_id) {

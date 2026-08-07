@@ -21,7 +21,7 @@ export async function getAttendance({ user, message }: HandlerContext): Promise<
   }
 
   if (!target) {
-    return { reply: notFoundReply(user, result, 'their attendance'), intent: 'get_attendance', confidence: 1 };
+    return { reply: notFoundReply(user, result, 'their attendance', 'get_attendance'), intent: 'get_attendance', confidence: 1 };
   }
 
   const subject = await matchSubjectInMessage(message);

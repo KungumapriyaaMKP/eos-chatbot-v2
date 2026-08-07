@@ -33,7 +33,7 @@ export async function getTimetable({ user, message }: HandlerContext): Promise<C
       return { reply: NO_PERMISSION_MESSAGE, intent: 'get_timetable', confidence: 1 };
     }
     if (!result.student) {
-      return { reply: notFoundReply(user, result, "their timetable"), intent: 'get_timetable', confidence: 1 };
+      return { reply: notFoundReply(user, result, "their timetable", "get_timetable"), intent: 'get_timetable', confidence: 1 };
     }
     if (!result.student.class_id) {
       return {

@@ -9,6 +9,17 @@
  *   admin> what about their attendance          <- no ID mentioned this time
  *   bot>   [Lakshmi's attendance]                <- still resolves correctly
  *
+ * Also remembers a PENDING intent — set whenever a lookup-capable reply had
+ * to ask "which student did you mean?" instead of answering, so that if the
+ * very next message fails classification outright (a bare "ganesh 22it001"
+ * scores below the confidence threshold on its own — no verb, nothing to
+ * anchor it to an intent), the reply can be re-tried against the intent that
+ * was actually waiting on it, instead of dead-ending the conversation with
+ * "I couldn't understand your question" right after the bot itself asked
+ * the question that message was answering. See notFoundReply /
+ * resolveTargetStudent in student-lookup.util.ts for where this is set and
+ * cleared, and chat.controller.ts for where it's consulted.
+ *
  * Scope and honest limitations (all deliberate trade-offs for a temporary
  * test chatbot, not oversights):
  *  - Keyed by user id (JWT `sub`), not a separate per-tab session token —
@@ -24,6 +35,8 @@
 export interface SessionContext {
   lastStudentId?: number;
   lastClassId?: number;
+  /** Intent name a "which student did you mean?"-style reply is still waiting on an answer for. */
+  pendingIntent?: string;
   updatedAt: number;
 }
 

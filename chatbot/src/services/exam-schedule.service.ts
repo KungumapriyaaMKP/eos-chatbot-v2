@@ -33,7 +33,7 @@ export async function getExamSchedule({ user, message }: HandlerContext): Promis
   }
 
   if (!target) {
-    return { reply: notFoundReply(user, result, 'their exam schedule'), intent: 'get_exam_schedule', confidence: 1 };
+    return { reply: notFoundReply(user, result, 'their exam schedule', 'get_exam_schedule'), intent: 'get_exam_schedule', confidence: 1 };
   }
 
   if (!target.class_id) {

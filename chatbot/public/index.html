@@ -152,14 +152,8 @@
   }
   .auth-panel-right h1 {
     font-size: 24px;
-    margin: 0 0 4px;
+    margin: 0 0 26px;
     font-weight: 700;
-    text-align: center;
-  }
-  .auth-panel-right p.sub {
-    margin: 0 0 22px;
-    color: var(--muted);
-    font-size: 13px;
     text-align: center;
   }
   @media (max-width: 640px) {
@@ -304,9 +298,10 @@
   }
   #empty-state p {
     margin: 10px 0 26px;
-    color: #e2e2e6;
+    color: #ffffff;
     font-size: 14px;
-    text-shadow: 0 1px 8px rgba(0,0,0,0.8), 0 1px 2px rgba(0,0,0,0.9);
+    font-weight: 700;
+    text-shadow: 0 1px 10px rgba(0,0,0,0.9), 0 1px 3px rgba(0,0,0,1);
   }
   .quick-actions {
     display: flex;
@@ -440,19 +435,18 @@
 
   <!-- LOGIN -->
   <div id="login-screen">
-    <div class="auth-card">
+    <div class="auth-card auth-card-animate" id="auth-card">
       <div class="auth-panel-left">
         <h1>EOS Assistant</h1>
         <p>
           Your college ERP, in plain English. Ask about attendance, marks,
-          timetable, fees, announcements, and more — answered straight from
+          timetable, fees, announcements, and more, answered straight from
           your college's own records.
         </p>
       </div>
 
       <div class="auth-panel-right">
         <h1>Sign in</h1>
-        <p class="sub">Temporary test login. See src/auth/README.md</p>
 
         <form id="login-form">
           <label for="email">Email</label>
@@ -570,6 +564,7 @@
 
   var loginScreen = document.getElementById('login-screen');
   var chatScreen = document.getElementById('chat-screen');
+  var authCard = document.getElementById('auth-card');
   var loginForm = document.getElementById('login-form');
   var loginBtn = document.getElementById('login-btn');
   var loginError = document.getElementById('login-error');
@@ -638,11 +633,23 @@
     messageInput.focus();
   }
 
+  // A CSS animation on a class that's already present only ever plays
+  // once — removing the class, forcing layout (reading offsetWidth), then
+  // re-adding it is the standard trick to restart it. Needed because the
+  // login screen isn't just shown once: a user can log out and land back
+  // on it in the same page load.
+  function replayAuthAnimation() {
+    authCard.classList.remove('auth-card-animate');
+    void authCard.offsetWidth;
+    authCard.classList.add('auth-card-animate');
+  }
+
   function showLogin() {
     chatScreen.style.display = 'none';
     loginScreen.style.display = 'flex';
     messagesEl.innerHTML = '';
     emptyState.style.display = 'flex';
+    replayAuthAnimation();
     sessionStorage.removeItem(HISTORY_KEY);
   }
 

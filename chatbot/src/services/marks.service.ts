@@ -24,7 +24,7 @@ export async function getMarks({ user, message }: HandlerContext): Promise<ChatR
   }
 
   if (!target) {
-    return { reply: notFoundReply(user, result, 'their marks'), intent: 'get_marks', confidence: 1 };
+    return { reply: notFoundReply(user, result, 'their marks', 'get_marks'), intent: 'get_marks', confidence: 1 };
   }
 
   const subject = await matchSubjectInMessage(message);

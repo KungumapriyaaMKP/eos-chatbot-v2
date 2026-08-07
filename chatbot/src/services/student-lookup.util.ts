@@ -164,6 +164,9 @@ async function resolveParentChild(userId: number, message: string): Promise<Stud
     )
     .find(Boolean);
   if (byExactId) {
+    // Resolved — clears a "which of your children?" pendingIntent left by a
+    // previous turn, same reasoning as the admin/coe path below.
+    updateSessionContext(userId, { pendingIntent: undefined });
     return { student: toResolved(byExactId), forbidden: false };
   }
 
@@ -172,6 +175,7 @@ async function resolveParentChild(userId: number, message: string): Promise<Stud
     name: studentName(c),
   }));
   if (fuzzy) {
+    updateSessionContext(userId, { pendingIntent: undefined });
     return { student: toResolved(fuzzy), forbidden: false };
   }
 
@@ -247,7 +251,10 @@ export async function resolveTargetStudent(user: JwtPayload, message: string): P
     }
 
     if (resolved) {
-      updateSessionContext(user.sub, { lastStudentId: resolved.id });
+      // Resolved — clear any pending "which student did you mean?" the
+      // previous turn may have left behind, so a later unrelated message
+      // that fails classification doesn't get wrongly re-routed to it.
+      updateSessionContext(user.sub, { lastStudentId: resolved.id, pendingIntent: undefined });
     }
 
     return { student: resolved, forbidden: false };
@@ -289,15 +296,32 @@ export const NO_LINKED_CHILDREN_MESSAGE = "I couldn't find any students linked t
  * reasons that can happen (ambiguous parent, no linked children, no linked
  * student, or a lookup-capable role that just needs a name/ID) with the
  * right message for each, instead of every handler re-deriving this logic.
+ *
+ * `intentName` is recorded as this session's pendingIntent whenever the
+ * reply is genuinely asking the caller to send more identifying info on
+ * their NEXT turn (the candidates and lookup-role branches) — never for the
+ * "no linked record at all" branches, where a follow-up message can't fix
+ * anything. chat.controller.ts consults this so that if that follow-up
+ * message (e.g. a bare "ganesh 22it001", no verb) scores below the
+ * classifier's confidence threshold on its own, it still gets routed back
+ * to the intent that was actually waiting on it instead of a dead-end
+ * "I couldn't understand your question" — see session-context.ts.
  */
-export function notFoundReply(user: JwtPayload, result: StudentLookupResult, resource: string): string {
+export function notFoundReply(
+  user: JwtPayload,
+  result: StudentLookupResult,
+  resource: string,
+  intentName: string,
+): string {
   if (result.candidates && result.candidates.length > 0) {
+    updateSessionContext(user.sub, { pendingIntent: intentName });
     return parentLookupPrompt(resource, result.candidates);
   }
   if (user.role === ROLES.PARENT) {
     return NO_LINKED_CHILDREN_MESSAGE;
   }
   if (isLookupRole(user.role)) {
+    updateSessionContext(user.sub, { pendingIntent: intentName });
     return adminLookupPrompt(resource);
   }
   return NO_LINKED_STUDENT_MESSAGE;

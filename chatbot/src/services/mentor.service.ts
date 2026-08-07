@@ -19,7 +19,7 @@ export async function getMentor({ user, message }: HandlerContext): Promise<Chat
   }
 
   if (!target) {
-    return { reply: notFoundReply(user, result, 'their class mentor'), intent: 'get_mentor', confidence: 1 };
+    return { reply: notFoundReply(user, result, 'their class mentor', 'get_mentor'), intent: 'get_mentor', confidence: 1 };
   }
 
   if (!target.class_id) {

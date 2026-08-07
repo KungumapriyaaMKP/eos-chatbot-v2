@@ -22,7 +22,7 @@ export async function getFees({ user, message }: HandlerContext): Promise<ChatRe
   }
 
   if (!target) {
-    return { reply: notFoundReply(user, result, 'their fee status'), intent: 'get_fees', confidence: 1 };
+    return { reply: notFoundReply(user, result, 'their fee status', 'get_fees'), intent: 'get_fees', confidence: 1 };
   }
 
   const demands = await prisma.student_fee_demand_mapping.findMany({
