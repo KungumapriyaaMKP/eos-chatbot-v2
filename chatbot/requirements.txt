@@ -1,0 +1,78 @@
+EOS Chatbot — Requirements
+==========================
+
+This is a Node.js / TypeScript project, not Python — there is nothing here
+for `pip install`. Actual dependency resolution happens via `package.json`
++ `package-lock.json` and `npm install`; this file is a plain-text summary
+of what's needed to run it, for anyone (or any checklist) expecting a
+requirements.txt.
+
+1. Runtime
+----------
+- Node.js  v20+ (developed/tested on v24.11.1)
+- npm      (ships with Node)
+- No Python, no GPU, no external AI service/API key — the intent
+  classifier (SBERT via @xenova/transformers) runs fully offline in-process
+  as an ONNX model.
+
+2. External services
+---------------------
+- PostgreSQL — the SAME database EOS-backend already uses (Supabase or
+  local copy). This app only ever runs read queries against it; it never
+  runs migrations and never writes to it. No separate database needed.
+- Internet access is required ONCE, on first `npm run train` (or first
+  server start), to download the ~90MB SBERT ONNX model weights from the
+  Hugging Face hub. Every run after that is fully offline against the
+  local `.transformers-cache/`.
+
+3. npm dependencies (see package.json for the authoritative, versioned list)
+------------------------------------------------------------------------------
+Runtime (`dependencies`):
+  @prisma/adapter-pg     ^7.9.0   — Postgres driver adapter for Prisma
+  @prisma/client         ^7.9.0   — Prisma ORM client (reads EOS-backend's schema)
+  @xenova/transformers   ^2.17.2  — offline SBERT (all-MiniLM-L6-v2) intent classifier
+  cors                   ^2.8.5
+  dotenv                 ^17.4.2
+  express                ^4.21.2
+  jsonwebtoken           ^9.0.3   — signs/verifies the chatbot's own temporary JWT
+  pg                     ^8.22.0
+
+Development (`devDependencies`):
+  @types/cors, @types/express, @types/jsonwebtoken, @types/node
+  jszip           ^3.10.1  — reads/writes the .docx training dataset
+  prisma          ^7.9.0   — Prisma CLI (schema generation)
+  tsx             ^4.23.1  — TypeScript runner (dev server, scripts)
+  typescript      ^5.7.3
+
+Install everything with:
+  npm install
+
+4. Environment variables (copy .env.example to .env and fill in)
+------------------------------------------------------------------
+  PORT                        — server port (default 4000)
+  NODE_ENV                    — development | production
+  DATABASE_URL                — MUST be the exact same value as
+                                 EOS-backend/.env's DATABASE_URL (same DB).
+                                 Prefer the transaction-mode pooler port
+                                 (:6543) over session-mode (:5432) — see
+                                 README.md for why.
+  CHATBOT_JWT_SECRET          — any long random string; independent of the
+                                 backend's own JWT_SECRET (temporary
+                                 standalone-testing auth — see
+                                 src/auth/README.md)
+  CHATBOT_JWT_EXPIRES_IN      — e.g. "8h"
+  INTENT_CONFIDENCE_THRESHOLD — 0-1, default 0.55
+  ALLOWED_ORIGINS             — comma-separated CORS allow-list
+
+5. One-time setup, in order
+-----------------------------
+  npm install
+  cp .env.example .env          # then edit .env, see section 4
+  npm run prisma:generate       # generates the Prisma client
+  npm run train                 # parses the training dataset .docx (must
+                                 # sit one directory above this folder) and
+                                 # builds SBERT embeddings — downloads the
+                                 # model weights on first run
+  npm run dev                   # starts the dev server on $PORT
+
+Full setup, architecture, and API details: README.md.

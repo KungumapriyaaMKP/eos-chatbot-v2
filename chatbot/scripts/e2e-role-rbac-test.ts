@@ -23,6 +23,20 @@
  * these were found. Fixture IDs below are live data, re-derive them with
  * discover-test-fixtures.ts if the underlying DB content changes.
  *
+ * IMPORTANT — restart the server (`npm run dev`) before each run of this
+ * script. Session context (src/intent/session-context.ts) is in-memory,
+ * keyed by user id, and deliberately outlives any one HTTP request or CLI
+ * invocation — so re-running this script against a server that's still up
+ * from a PREVIOUS run leaves the admin/hod/coe/parent test accounts with
+ * real leftover state (a resolved lastStudentId, a pendingIntent) from that
+ * earlier run. That's the feature working as intended, not a bug — but it
+ * means Part 0's "clean session" assumption only holds right after a
+ * restart. A stale session showing up as a false failure here looks like:
+ * an ambiguous "which student did you mean?" prompt instead resolving
+ * immediately (because a student was already in context from before), or a
+ * pendingIntent-follow-up check resolving the wrong intent. If Part 0 fails,
+ * restart the server and re-run before assuming it's a real regression.
+ *
  * Usage: npx tsx scripts/e2e-role-rbac-test.ts [baseUrl]
  */
 
