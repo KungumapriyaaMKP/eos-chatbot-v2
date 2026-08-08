@@ -1,0 +1,18 @@
+# The EOS-backend repo lives here locally for reference/local-DB access only —
+# it's the backend team's own repository, not this project's to push.
+# See chatbot/README.md for how this project relates to it.
+EOS-backend/
+
+# Real secrets — never commit. Copy chatbot/.env.example instead.
+env
+.env
+*.env
+
+# Stray/generated artifacts — chatbot/src/embeddings/*.json is the real
+# build output (gitignored separately, see chatbot/.gitignore) and is
+# regenerated locally via `npm run train`.
+intents.json
+
+node_modules/
+*.log
+.DS_Store

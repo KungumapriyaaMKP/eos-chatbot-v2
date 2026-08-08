@@ -12,7 +12,7 @@ logic — see [Architecture](#architecture) for exactly what's reused vs. new.
 ```
 User question
    → SBERT embedding (all-MiniLM-L6-v2, in-process, offline)
-   → cosine similarity against 2,047 trained examples across 84 intents
+   → cosine similarity against 2,052 trained examples across 84 intents
    → best match below confidence threshold? → "I couldn't understand your
      question. Please rephrase it."
    → RBAC check against the intent's allowed roles (from the training
@@ -211,7 +211,7 @@ This runs two steps (`train:parse` then `train:embed`):
 1. Parses `EOS_Intent_Training_Dataset_English_Only.docx` (expected one
    directory above `chatbot/` by default — pass an explicit path:
    `npx tsx src/training/parse-dataset.ts <path>`) into `src/embeddings/intents.json`.
-2. Embeds all 2,047 example utterances with SBERT into `src/embeddings/embeddings.json`.
+2. Embeds all 2,052 example utterances with SBERT into `src/embeddings/embeddings.json`.
 
 **First run downloads ~90MB of ONNX model weights** from the Hugging Face
 hub and caches them under `.transformers-cache/`. Every run after that —
@@ -289,7 +289,7 @@ Denied and low-confidence cases still return `200` with a conversational
 
 ## Intent coverage
 
-The classifier is trained on **84 intents / 2,047 examples** — the
+The classifier is trained on **84 intents / 2,052 examples** — the
 original 80-intent dataset plus a second pass (`scripts/augment-dataset-2.ts`)
 that merged in a user-supplied generic pattern sheet: phrasings that
 duplicated existing intents were added as more training examples, and four
