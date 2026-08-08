@@ -20,10 +20,12 @@ requirements.txt.
 - PostgreSQL — the SAME database EOS-backend already uses (Supabase or
   local copy). This app only ever runs read queries against it; it never
   runs migrations and never writes to it. No separate database needed.
-- Internet access is required ONCE, on first `npm run train` (or first
-  server start), to download the ~90MB SBERT ONNX model weights from the
-  Hugging Face hub. Every run after that is fully offline against the
-  local `.transformers-cache/`.
+- No internet access needed for the SBERT model — the ONNX weights
+  (~23MB quantized) are committed straight into the repo under
+  `.transformers-cache/`, specifically so this works on networks that
+  block the Hugging Face hub. If that folder is ever deleted, it will
+  auto re-download from Hugging Face on the next run instead (needs
+  internet just that once).
 
 3. npm dependencies (see package.json for the authoritative, versioned list)
 ------------------------------------------------------------------------------

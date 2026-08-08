@@ -162,7 +162,7 @@ chatbot/
 │   └── generated/prisma/  Prisma Client (generated, gitignored)
 ├── prisma/schema.prisma  verbatim copy of EOS-backend's schema (+1 line, see above)
 ├── scripts/smoke-test-intents.ts   offline classifier sanity check, no DB needed
-└── .transformers-cache/  cached SBERT ONNX weights (gitignored)
+└── .transformers-cache/  cached SBERT ONNX weights (committed, ~23MB — see Setup)
 ```
 
 ## Setup
@@ -213,12 +213,16 @@ This runs two steps (`train:parse` then `train:embed`):
    `npx tsx src/training/parse-dataset.ts <path>`) into `src/embeddings/intents.json`.
 2. Embeds all 2,065 example utterances with SBERT into `src/embeddings/embeddings.json`.
 
-**First run downloads ~90MB of ONNX model weights** from the Hugging Face
-hub and caches them under `.transformers-cache/`. Every run after that —
-including every `/chat` request at runtime — is fully offline against the
-local cache. For a fully air-gapped environment, run `npm run train` once
-somewhere with internet, then copy `.transformers-cache/` alongside the
-rest of the deployment.
+**The SBERT ONNX model weights (~23MB quantized) are committed straight
+into the repo, under `.transformers-cache/`** — deliberately NOT
+gitignored. Some dev/college networks block the Hugging Face hub outright,
+which otherwise makes the first run silently fail to download the model;
+committing the weights means a fresh clone works fully offline from the
+very first `npm run train`, no internet needed at any point. If you ever
+delete or corrupt the local cache, it'll auto re-download from the
+Hugging Face hub on the next run (`.transformers-cache/` isn't gitignored,
+but nothing forces you to keep using the committed copy — either source
+works, they're byte-identical).
 
 Re-run `npm run train` any time the `.docx` dataset changes.
 
