@@ -53,6 +53,25 @@ export function joinNaturally(items: string[]): string {
   return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 }
 
+/**
+ * Renders a GitHub-flavored-markdown table — the frontend (public/index.html)
+ * detects this exact shape (a line starting with `|`, followed by a
+ * `|---|---|`-style separator line) and renders it as a real HTML `<table>`
+ * instead of showing the raw pipe/dash syntax as text. Used for any reply
+ * with 2+ columns and 2+ rows (marks, timetable, a roster, ...) — a single
+ * fact ("your attendance is 82%") stays plain prose, a table doesn't help there.
+ *
+ * Cell values are stringified and `|` is escaped so a name or subject that
+ * happens to contain a pipe can't break the table's column structure.
+ */
+export function markdownTable(headers: string[], rows: Array<Array<string | number>>): string {
+  const cell = (v: string | number) => String(v).replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+  const headerLine = `| ${headers.map(cell).join(' | ')} |`;
+  const separatorLine = `| ${headers.map(() => '---').join(' | ')} |`;
+  const rowLines = rows.map((row) => `| ${row.map(cell).join(' | ')} |`);
+  return [headerLine, separatorLine, ...rowLines].join('\n');
+}
+
 export const NO_PERMISSION_MESSAGE =
   "Sorry, you don't have permission to access this information.";
 

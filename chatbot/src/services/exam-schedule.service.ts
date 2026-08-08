@@ -1,7 +1,7 @@
 import { prisma } from '../utils/prisma';
 import { ROLES } from '../config/roles';
 import { resolveTargetStudent, notFoundReply, possessive } from './student-lookup.util';
-import { toDateOnly, formatHHMM, endSentence, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
+import { toDateOnly, formatHHMM, endSentence, markdownTable, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 
 /**
@@ -75,11 +75,15 @@ export async function getExamSchedule({ user, message }: HandlerContext): Promis
   }
 
   const who = possessive(user, target);
-  const lines = rows.map((r) => {
-    const subjectName = r.exam_subject_mapping.subjects.name;
-    const examName = r.exam_subject_mapping.exams.exam_types.name;
-    return `• ${subjectName} (${examName}) – ${toDateOnly(r.exam_date)}, ${formatHHMM(r.start_time)}–${formatHHMM(r.end_time)}`;
-  });
+  const table = markdownTable(
+    ['Subject', 'Exam', 'Date', 'Time'],
+    rows.map((r) => [
+      r.exam_subject_mapping.subjects.name,
+      r.exam_subject_mapping.exams.exam_types.name,
+      toDateOnly(r.exam_date),
+      `${formatHHMM(r.start_time)}–${formatHHMM(r.end_time)}`,
+    ]),
+  );
 
-  return { reply: `${who} upcoming exams:\n\n${lines.join('\n')}`, intent: 'get_exam_schedule', confidence: 1, data: rows };
+  return { reply: `${who} upcoming exams:\n\n${table}`, intent: 'get_exam_schedule', confidence: 1, data: rows };
 }

@@ -2,7 +2,7 @@ import { prisma } from '../utils/prisma';
 import { ROLES } from '../config/roles';
 import { resolveTargetStudent, notFoundReply, possessive } from './student-lookup.util';
 import { matchSubjectInMessage } from './subject-match.util';
-import { endSentence, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
+import { endSentence, markdownTable, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 
 /**
@@ -62,14 +62,16 @@ export async function getMarks({ user, message }: HandlerContext): Promise<ChatR
   }
 
   const who = possessive(user, target);
-  const lines = rows.map((r) => {
-    const subjectName = r.exam_subject_mapping.subjects.name;
-    const examName = r.exam_subject_mapping.exams.exam_types.name;
-    const scored = r.marks_obtained !== null ? r.marks_obtained.toString() : 'not entered';
-    return `• ${subjectName} (${examName}): ${scored} / ${r.max_marks.toString()}`;
-  });
+  const table = markdownTable(
+    ['Subject', 'Exam', 'Marks'],
+    rows.map((r) => [
+      r.exam_subject_mapping.subjects.name,
+      r.exam_subject_mapping.exams.exam_types.name,
+      `${r.marks_obtained !== null ? r.marks_obtained.toString() : 'not entered'} / ${r.max_marks.toString()}`,
+    ]),
+  );
 
-  const reply = `${who} marks:\n\n${lines.join('\n')}`;
+  const reply = `${who} marks:\n\n${table}`;
 
   return { reply, intent: 'get_marks', confidence: 1, data: rows };
 }

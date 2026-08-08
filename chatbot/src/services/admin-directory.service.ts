@@ -1,7 +1,7 @@
 import { prisma } from '../utils/prisma';
 import { ROLES } from '../config/roles';
 import { fuzzyFindBest } from '../utils/fuzzy';
-import type { ChatReply } from '../utils/response';
+import { markdownTable, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 
 const LIST_LIMIT = 15;
@@ -60,15 +60,18 @@ export async function adminListStudents({ user, message }: HandlerContext): Prom
     return { reply: `I couldn't find any students${scope}.`, intent: 'admin_list_students', confidence: 1 };
   }
 
-  const lines = rows.map((s) => {
-    const name = [s.soa_applications?.first_name, s.soa_applications?.last_name].filter(Boolean).join(' ');
-    return `• ${s.roll_no ?? s.student_id_no}: ${name || s.student_id_no}`;
-  });
+  const table = markdownTable(
+    ['Roll No', 'Name'],
+    rows.map((s) => [
+      s.roll_no ?? s.student_id_no,
+      [s.soa_applications?.first_name, s.soa_applications?.last_name].filter(Boolean).join(' ') || s.student_id_no,
+    ]),
+  );
 
   const more = total > rows.length ? `\n\n...and ${total - rows.length} more.` : '';
 
   return {
-    reply: `${total} student(s)${scope}. Showing the first ${rows.length}:\n\n${lines.join('\n')}${more}`,
+    reply: `${total} student(s)${scope}. Showing the first ${rows.length}:\n\n${table}${more}`,
     intent: 'admin_list_students',
     confidence: 1,
     data: { total, rows },
@@ -94,11 +97,14 @@ export async function adminListFaculty({ user, message }: HandlerContext): Promi
     return { reply: `I couldn't find any faculty${scope}.`, intent: 'admin_list_faculty', confidence: 1 };
   }
 
-  const lines = rows.map((f) => `• ${f.first_name} ${f.last_name}: ${f.designation} (${f.departments.code})`);
+  const table = markdownTable(
+    ['Name', 'Designation', 'Dept'],
+    rows.map((f) => [`${f.first_name} ${f.last_name}`, f.designation, f.departments.code]),
+  );
   const more = total > rows.length ? `\n\n...and ${total - rows.length} more.` : '';
 
   return {
-    reply: `${total} faculty member(s)${scope}. Showing the first ${rows.length}:\n\n${lines.join('\n')}${more}`,
+    reply: `${total} faculty member(s)${scope}. Showing the first ${rows.length}:\n\n${table}${more}`,
     intent: 'admin_list_faculty',
     confidence: 1,
     data: { total, rows },

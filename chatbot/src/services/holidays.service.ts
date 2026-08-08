@@ -1,6 +1,6 @@
 import { prisma } from '../utils/prisma';
 import { ROLES } from '../config/roles';
-import { toDateOnly, type ChatReply } from '../utils/response';
+import { toDateOnly, markdownTable, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 
 const RESULT_LIMIT = 8;
@@ -60,9 +60,9 @@ export async function getHolidays({ user }: HandlerContext): Promise<ChatReply> 
     if (unique.length >= RESULT_LIMIT) break;
   }
 
-  const lines = unique.map((e) => `• ${e.title} on ${toDateOnly(e.event_date)}`);
+  const table = markdownTable(['Holiday', 'Date'], unique.map((e) => [e.title, toDateOnly(e.event_date)]));
 
-  return { reply: `Upcoming holidays:\n\n${lines.join('\n')}`, intent: 'get_holidays', confidence: 1, data: unique };
+  return { reply: `Upcoming holidays:\n\n${table}`, intent: 'get_holidays', confidence: 1, data: unique };
 }
 
 async function resolveBatchAndSemester(

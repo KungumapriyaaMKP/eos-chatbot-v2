@@ -2,7 +2,7 @@ import { prisma } from '../utils/prisma';
 import { ROLES } from '../config/roles';
 import { resolveOwnFaculty } from './faculty-lookup.util';
 import { resolveTargetStudent, notFoundReply } from './student-lookup.util';
-import { dayOfWeekName, formatHHMM, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
+import { dayOfWeekName, formatHHMM, markdownTable, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 
 const TODAY = () => new Date().getDay(); // 0=Sunday..6=Saturday — matches timetable_slots.day_of_week (1=Mon..6=Sat)
@@ -100,8 +100,11 @@ function formatDaySchedule(day: number, heading: string, slots: Array<{ subject:
     return { reply, intent: 'get_timetable', confidence: 1, data: { day_of_week: day, slots: [] } };
   }
 
-  const lines = slots.map((s) => `• ${s.subject} – ${formatHHMM(s.start_time)}`);
-  const reply = `${heading}:\n\n${lines.join('\n')}`;
+  const table = markdownTable(
+    ['Time', 'Subject'],
+    slots.map((s) => [formatHHMM(s.start_time), s.subject]),
+  );
+  const reply = `${heading}:\n\n${table}`;
 
   return { reply, intent: 'get_timetable', confidence: 1, data: { day_of_week: day, slots } };
 }

@@ -14,9 +14,25 @@ import { logger } from '../utils/logger';
  * server bug, which is needlessly alarming and indistinguishable from one.
  * P1001/P1002/P1008/P1017 are Prisma's own "the database is unreachable/
  * timed out/the connection dropped" codes; see
- * https://www.prisma.io/docs/orm/reference/error-reference.
+ * https://www.prisma.io/docs/orm/reference/error-reference. But Prisma
+ * doesn't always classify a connectivity failure into one of its own P1xxx
+ * codes first — a raw driver/network-level timeout (seen live: a
+ * PrismaClientKnownRequestError whose `code` was the bare Node.js/pg error
+ * code `ETIMEDOUT`, not a P-prefixed one) can surface with the underlying
+ * OS/network error code instead. ECONNREFUSED/ECONNRESET/EHOSTUNREACH are
+ * the same class of "never even reached the database", just from the TCP
+ * layer rather than Prisma's own retry logic.
  */
-const DB_UNREACHABLE_CODES = new Set(['P1001', 'P1002', 'P1008', 'P1017']);
+const DB_UNREACHABLE_CODES = new Set([
+  'P1001',
+  'P1002',
+  'P1008',
+  'P1017',
+  'ETIMEDOUT',
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'EHOSTUNREACH',
+]);
 
 function isDbUnreachable(err: unknown): boolean {
   return typeof err === 'object' && err !== null && 'code' in err && DB_UNREACHABLE_CODES.has(String((err as { code: unknown }).code));

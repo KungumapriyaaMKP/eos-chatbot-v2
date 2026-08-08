@@ -1,6 +1,6 @@
 import { prisma } from '../utils/prisma';
 import { ROLES } from '../config/roles';
-import { toDateOnly, type ChatReply } from '../utils/response';
+import { toDateOnly, markdownTable, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 import type { Prisma } from '../generated/prisma/client';
 
@@ -30,8 +30,8 @@ export async function getAnnouncements({ user }: HandlerContext): Promise<ChatRe
     return { reply: 'No announcements for you right now.', intent: 'get_announcements', confidence: 1 };
   }
 
-  const lines = rows.map((a) => `• ${a.title} (${toDateOnly(a.created_at)})`);
-  const reply = `Latest announcements:\n\n${lines.join('\n')}`;
+  const table = markdownTable(['Title', 'Date'], rows.map((a) => [a.title, toDateOnly(a.created_at)]));
+  const reply = `Latest announcements:\n\n${table}`;
 
   return { reply, intent: 'get_announcements', confidence: 1, data: rows };
 }

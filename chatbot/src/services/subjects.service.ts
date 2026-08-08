@@ -1,6 +1,6 @@
 import { prisma } from '../utils/prisma';
 import { resolveTargetStudent, notFoundReply, possessive } from './student-lookup.util';
-import { endSentence, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
+import { endSentence, markdownTable, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 
 /**
@@ -40,7 +40,10 @@ export async function getSubjects({ user, message }: HandlerContext): Promise<Ch
   }
 
   const who = possessive(user, target);
-  const lines = rows.map((r) => `• ${r.subjects.name} (${r.subjects.subject_code})`);
+  const table = markdownTable(
+    ['Subject', 'Code', 'Credits'],
+    rows.map((r) => [r.subjects.name, r.subjects.subject_code, r.subjects.credits ?? '—']),
+  );
 
-  return { reply: `${who} subjects this semester:\n\n${lines.join('\n')}`, intent: 'get_my_subjects', confidence: 1, data: rows };
+  return { reply: `${who} subjects this semester:\n\n${table}`, intent: 'get_my_subjects', confidence: 1, data: rows };
 }

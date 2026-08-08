@@ -1,6 +1,6 @@
 import { prisma } from '../utils/prisma';
 import { resolveTargetStudent, notFoundReply, possessive } from './student-lookup.util';
-import { formatCurrency, toDateOnly, endSentence, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
+import { formatCurrency, toDateOnly, endSentence, markdownTable, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 
 const HISTORY_PATTERN = /\b(history|paid so far|payment history|receipts?|transactions?)\b/i;
@@ -51,10 +51,11 @@ export async function getFees({ user, message }: HandlerContext): Promise<ChatRe
       };
     }
     payments.sort((a, b) => b.payment_date.getTime() - a.payment_date.getTime());
-    const lines = payments.map(
-      (p) => `• ${formatCurrency(Number(p.amount_paid))} on ${toDateOnly(p.payment_date)} (receipt ${p.receipt_no})`,
+    const table = markdownTable(
+      ['Date', 'Amount', 'Receipt', 'Mode'],
+      payments.map((p) => [toDateOnly(p.payment_date), formatCurrency(Number(p.amount_paid)), p.receipt_no ?? '—', p.payment_mode ?? '—']),
     );
-    return { reply: `${who} payment history:\n\n${lines.join('\n')}`, intent: 'get_fees', confidence: 1, data: payments };
+    return { reply: `${who} payment history:\n\n${table}`, intent: 'get_fees', confidence: 1, data: payments };
   }
 
   const totalDemand = demands.reduce((sum, d) => sum + Number(d.total_amount), 0);

@@ -361,6 +361,26 @@
     border: 1px solid var(--border);
   }
   .row.bot .bubble.error { background: var(--danger-bg); color: var(--danger); border-color: rgba(255,107,107,0.3); }
+
+  /* Structured replies (marks, timetable, a roster, ...) render as real
+     tables — see src/utils/response.ts markdownTable() on the backend and
+     renderMarkdown()/hasMarkdownTable() below. Wrapped in a scrolling div
+     since a wide table shouldn't force the whole page to scroll sideways
+     inside a bubble capped at 78% width. */
+  .bubble-table-wrap { overflow-x: auto; margin: 6px 0 2px; max-width: 100%; }
+  .bubble-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  .bubble-table th, .bubble-table td { padding: 7px 12px; text-align: left; white-space: nowrap; }
+  .bubble-table th {
+    color: var(--muted);
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 10.5px;
+    letter-spacing: 0.04em;
+    border-bottom: 2px solid var(--user-bubble);
+  }
+  .bubble-table td { border-bottom: 1px solid var(--border); }
+  .bubble-table tbody tr:last-child td { border-bottom: none; }
+  .bubble-table tbody tr:hover td { background: rgba(255, 255, 255, 0.04); }
   .bubble.typing-caret::after {
     content: '';
     display: inline-block;
@@ -653,6 +673,76 @@
     sessionStorage.removeItem(HISTORY_KEY);
   }
 
+  // Renders a bot reply's plain text safely (HTML-escaped, so a DB-sourced
+  // name/title can never inject markup) while upgrading any GitHub-style
+  // markdown table block — see src/utils/response.ts markdownTable() — into
+  // a real <table>. Everything outside a table block stays plain escaped
+  // text; the .bubble CSS's white-space:pre-wrap already handles its
+  // newlines/spacing exactly like the old textContent-only rendering did.
+  function escapeHtml(s) {
+    return s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function isTableRowLine(line) {
+    return /^\s*\|.*\|\s*$/.test(line);
+  }
+
+  function isTableSeparatorLine(line) {
+    return isTableRowLine(line) && /^\s*\|[\s:|-]+\|\s*$/.test(line) && line.indexOf('-') !== -1;
+  }
+
+  function splitTableRow(line) {
+    var trimmed = line.trim().replace(/^\|/, '').replace(/\|$/, '');
+    return trimmed.split(/(?<!\\)\|/).map(function (cell) {
+      return cell.trim().replace(/\\\|/g, '|');
+    });
+  }
+
+  function hasMarkdownTable(text) {
+    var lines = text.split('\n');
+    for (var i = 0; i + 1 < lines.length; i++) {
+      if (isTableRowLine(lines[i]) && isTableSeparatorLine(lines[i + 1])) return true;
+    }
+    return false;
+  }
+
+  function buildTableHtml(headerCells, bodyRows) {
+    var thead = '<thead><tr>' + headerCells.map(function (h) {
+      return '<th>' + escapeHtml(h) + '</th>';
+    }).join('') + '</tr></thead>';
+    var tbody = '<tbody>' + bodyRows.map(function (row) {
+      return '<tr>' + row.map(function (c) { return '<td>' + escapeHtml(c) + '</td>'; }).join('') + '</tr>';
+    }).join('') + '</tbody>';
+    return '<div class="bubble-table-wrap"><table class="bubble-table">' + thead + tbody + '</table></div>';
+  }
+
+  function renderMarkdown(text) {
+    var lines = text.split('\n');
+    var out = [];
+    var i = 0;
+    while (i < lines.length) {
+      if (isTableRowLine(lines[i]) && i + 1 < lines.length && isTableSeparatorLine(lines[i + 1])) {
+        var headerCells = splitTableRow(lines[i]);
+        i += 2;
+        var bodyRows = [];
+        while (i < lines.length && isTableRowLine(lines[i])) {
+          bodyRows.push(splitTableRow(lines[i]));
+          i++;
+        }
+        out.push(buildTableHtml(headerCells, bodyRows));
+      } else {
+        out.push(escapeHtml(lines[i]));
+        i++;
+      }
+    }
+    return out.join('\n');
+  }
+
   // Reveals `text` a few characters at a time, like the bot is typing it —
   // tick rate is fixed but the chunk size scales with length, so a short
   // reply still feels like real typing and a long one doesn't drag on forever.
@@ -688,9 +778,17 @@
     row.appendChild(bubble);
     messagesEl.appendChild(row);
 
-    var shouldAnimate = role === 'bot' && !(meta && (meta.isError || meta.instant));
+    // Table replies render instantly as real HTML tables — typing pipes and
+    // dashes out character by character would just look broken mid-reveal.
+    // Plain-text bot replies keep the existing typing animation unchanged.
+    var isBotContent = role === 'bot' && !(meta && meta.isError);
+    var containsTable = isBotContent && hasMarkdownTable(text);
+    var shouldAnimate = isBotContent && !containsTable && !(meta && meta.instant);
+
     if (shouldAnimate) {
       typeIntoBubble(bubble, text);
+    } else if (isBotContent) {
+      bubble.innerHTML = renderMarkdown(text);
     } else {
       bubble.textContent = text;
     }

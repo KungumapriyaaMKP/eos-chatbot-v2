@@ -1,15 +1,40 @@
 import { prisma } from '../utils/prisma';
-import { resolveOwnFaculty } from './faculty-lookup.util';
+import { ROLES } from '../config/roles';
+import { resolveOwnFaculty, resolveFacultyByFreeText, type ResolvedFaculty } from './faculty-lookup.util';
 import { resolveTargetClass } from './class-match.util';
-import { round2, joinNaturally, type ChatReply } from '../utils/response';
+import { round2, joinNaturally, markdownTable, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 
-/** faculty_my_classes — faculty only: every class/subject they're assigned to teach, plus any class they mentor. */
-export async function getFacultyClasses({ user }: HandlerContext): Promise<ChatReply> {
-  const faculty = await resolveOwnFaculty(user.sub);
-  if (!faculty) {
-    return { reply: "I couldn't find a faculty profile linked to your account.", intent: 'faculty_my_classes', confidence: 1 };
+/**
+ * faculty_my_classes — faculty/hod: their own classes (unchanged). admin/hod
+ * can ALSO name a specific colleague ("classes handled by Bala Murugan") —
+ * fuzzy name lookup via resolveFacultyByFreeText, the faculty-side
+ * counterpart of the admin/coe student lookup in student-lookup.util.ts. An
+ * hod's lookup is scoped to their own department (their real authority
+ * boundary everywhere else in this codebase — see class-match.util.ts); if
+ * naming someone doesn't match anything, hod falls back to "myself" (most
+ * hod messages ARE about their own classes), admin gets asked to clarify
+ * (admin has no "own classes" to fall back to).
+ */
+export async function getFacultyClasses({ user, message }: HandlerContext): Promise<ChatReply> {
+  const own = user.role === ROLES.FACULTY || user.role === ROLES.HOD ? await resolveOwnFaculty(user.sub) : null;
+
+  let faculty: ResolvedFaculty | null = null;
+  if (user.role === ROLES.ADMIN) {
+    faculty = await resolveFacultyByFreeText(message);
+  } else if (user.role === ROLES.HOD) {
+    faculty = (own && (await resolveFacultyByFreeText(message, own.department_id))) || own;
+  } else {
+    faculty = own;
   }
+
+  if (!faculty) {
+    return user.role === ROLES.ADMIN
+      ? { reply: 'Which faculty member did you mean? Please include their name.', intent: 'faculty_my_classes', confidence: 1 }
+      : { reply: "I couldn't find a faculty profile linked to your account.", intent: 'faculty_my_classes', confidence: 1 };
+  }
+
+  const isSelf = own !== null && faculty.id === own.id;
 
   const [teaching, mentoring] = await Promise.all([
     prisma.faculty_subject_class_mapping.findMany({
@@ -27,17 +52,20 @@ export async function getFacultyClasses({ user }: HandlerContext): Promise<ChatR
   ]);
 
   if (teaching.length === 0 && mentoring.length === 0) {
-    return { reply: "You're not currently assigned to any classes.", intent: 'faculty_my_classes', confidence: 1 };
+    const reply = isSelf ? "You're not currently assigned to any classes." : `${faculty.name} isn't currently assigned to any classes.`;
+    return { reply, intent: 'faculty_my_classes', confidence: 1 };
   }
 
-  const lines = [
-    ...teaching.map(
-      (t) => `• ${t.classes.departments.code}-${t.classes.section}: ${t.subjects.name} (${t.academic_year})`,
-    ),
-    ...mentoring.map((m) => `• ${m.classes.departments.code}-${m.classes.section}: Class Mentor`),
-  ];
+  const table = markdownTable(
+    ['Class', 'Role', 'Academic Year'],
+    [
+      ...teaching.map((t) => [`${t.classes.departments.code}-${t.classes.section}`, t.subjects.name, t.academic_year]),
+      ...mentoring.map((m) => [`${m.classes.departments.code}-${m.classes.section}`, 'Class Mentor', '']),
+    ],
+  );
 
-  return { reply: `Your classes:\n\n${lines.join('\n')}`, intent: 'faculty_my_classes', confidence: 1, data: { teaching, mentoring } };
+  const heading = isSelf ? 'Your classes' : `${faculty.name}'s classes`;
+  return { reply: `${heading}:\n\n${table}`, intent: 'faculty_my_classes', confidence: 1, data: { teaching, mentoring } };
 }
 
 /** faculty_class_attendance — faculty/admin: attendance summary for a specific class. */
@@ -103,13 +131,16 @@ export async function getSectionStudents({ user, message }: HandlerContext): Pro
     return { reply: `No students found in ${match.label}.`, intent: 'section_students', confidence: 1 };
   }
 
-  const lines = students.map((s) => {
-    const name = [s.soa_applications?.first_name, s.soa_applications?.last_name].filter(Boolean).join(' ');
-    return `• ${s.roll_no ?? s.student_id_no}: ${name || s.student_id_no}`;
-  });
+  const table = markdownTable(
+    ['Roll No', 'Name'],
+    students.map((s) => [
+      s.roll_no ?? s.student_id_no,
+      [s.soa_applications?.first_name, s.soa_applications?.last_name].filter(Boolean).join(' ') || s.student_id_no,
+    ]),
+  );
 
   return {
-    reply: `${match.label} has ${students.length} student(s):\n\n${lines.join('\n')}`,
+    reply: `${match.label} has ${students.length} student(s):\n\n${table}`,
     intent: 'section_students',
     confidence: 1,
     data: students,
