@@ -12,7 +12,7 @@ logic — see [Architecture](#architecture) for exactly what's reused vs. new.
 ```
 User question
    → SBERT embedding (all-MiniLM-L6-v2, in-process, offline)
-   → cosine similarity against 2,052 trained examples across 84 intents
+   → cosine similarity against 2,065 trained examples across 84 intents
    → best match below confidence threshold? → "I couldn't understand your
      question. Please rephrase it."
    → RBAC check against the intent's allowed roles (from the training
@@ -211,7 +211,7 @@ This runs two steps (`train:parse` then `train:embed`):
 1. Parses `EOS_Intent_Training_Dataset_English_Only.docx` (expected one
    directory above `chatbot/` by default — pass an explicit path:
    `npx tsx src/training/parse-dataset.ts <path>`) into `src/embeddings/intents.json`.
-2. Embeds all 2,052 example utterances with SBERT into `src/embeddings/embeddings.json`.
+2. Embeds all 2,065 example utterances with SBERT into `src/embeddings/embeddings.json`.
 
 **First run downloads ~90MB of ONNX model weights** from the Hugging Face
 hub and caches them under `.transformers-cache/`. Every run after that —
@@ -289,7 +289,7 @@ Denied and low-confidence cases still return `200` with a conversational
 
 ## Intent coverage
 
-The classifier is trained on **84 intents / 2,052 examples** — the
+The classifier is trained on **84 intents / 2,065 examples** — the
 original 80-intent dataset plus a second pass (`scripts/augment-dataset-2.ts`)
 that merged in a user-supplied generic pattern sheet: phrasings that
 duplicated existing intents were added as more training examples, and four
@@ -297,7 +297,15 @@ genuinely new intents (`password_reset`, `general_facilities`,
 `admissions_info`, `library_hours`) were appended under their own "General"
 section. `scripts/augment-dataset.ts` similarly added ID/roll-number-centric
 admin-lookup phrasing ("marks of 23IT001") after live testing found that
-gap. Both scripts back up the original `.docx` to `.docx.bak` before writing.
+gap. `scripts/augment-dataset-5.ts` and `-6.ts` fixed two more classifier
+collisions found by the full end-to-end sweep (`scripts/e2e-role-rbac-test.ts`):
+"timetable for/of &lt;ID&gt;" — a completely natural admin/parent/hod
+phrasing — was losing to `get_exam_schedule`'s own example "23IT001 exam
+timetable"; and heavy typo-compounding ("shw me marsk of vignesh" — typo'd
+verb + typo'd keyword + a bare name) scored just under the confidence
+threshold on its own. All augmentation scripts back up the original
+`.docx` to `.docx.bak` before writing (once — later scripts share the same
+backup, taken from the pristine pre-augmentation original).
 Real backend integration is wired up for a curated set covering every role
 and several ERP modules (see `src/intent/intent.registry.ts`):
 
@@ -312,9 +320,10 @@ and several ERP modules (see `src/intent/intent.registry.ts`):
   `section_students`
 - **Admin** (also hod, forced to their own department — see
   `admin-directory.service.ts`): `admin_list_students`, `admin_list_faculty`
-- **Utility / safety** (no DB access): `greeting`, `help`, `thanks`, `goodbye`,
-  `bot_identity`, `wrong_answer`, `human_handoff`, `feedback_positive`,
-  `abuse`, `injection_attempt`, `emergency_or_distress`
+- **Utility / safety** (no DB access, every role incl. parent/hod/coe —
+  see below): `greeting`, `help`, `thanks`, `goodbye`, `bot_identity`,
+  `wrong_answer`, `human_handoff`, `feedback_positive`, `abuse`,
+  `injection_attempt`, `emergency_or_distress`
 - **Out of scope**: `out_of_scope` + all `oos_*` intents (CGPA, mess menu,
   WiFi, syllabus, faculty contact, payment actions)
 - **Real need, no backing data — honest redirect**: `password_reset`,
@@ -358,6 +367,18 @@ to them would mean new intents tied to their own domains (library
 management, hostel management, ...), not just an RBAC list change, and is
 future work, not something this pass claims to have covered.
 
+**Follow-up fix (`scripts/augment-dataset-5.ts`), found by a full
+role×intent end-to-end sweep (`scripts/e2e-role-rbac-test.ts`):** the pass
+above only ever touched data-bearing intents. `parent`, `hod`, and `coe`
+were still completely missing from every safety-critical and universal
+utility intent (`greeting`, `thanks`, `help`, `emergency_or_distress`,
+`abuse`, `injection_attempt`, ...) and every generic out-of-scope/redirect
+intent (`oos_*`, `password_reset`, `library_hours`, ...) — none of which
+touch any role-scoped data. In practice a parent saying "hi", or genuinely
+expressing distress, got a flat "Sorry, you don't have permission" instead
+of a real reply. Fixed by adding those three roles to all 22 affected
+intents; verified live for all six roles.
+
 Every other recognised intent (hostel, transport, library, placement,
 procurement, venues, visitor logs, appraisal, payroll, invigilation, ...)
 still gets classified correctly — it just replies honestly that it isn't
@@ -382,7 +403,8 @@ required, since intent detection never touches Prisma.
 
 To test the full pipeline (auth → RBAC → DB-backed reply) end to end, point
 `DATABASE_URL` at a real (or local copy of the) EOS database, seed at least
-one `active` user per role via EOS-backend's own `prisma/seed.ts`, then:
+one `active` user per role via EOS-backend's own `prisma/seed.ts`, then
+either a single manual call:
 
 ```bash
 curl -X POST http://localhost:4000/auth/login \
@@ -394,6 +416,24 @@ curl -X POST http://localhost:4000/chat \
   -H "Authorization: Bearer <accessToken>" \
   -d '{"message":"Show my attendance"}'
 ```
+
+or the full regression suite, against a **running** server (`npm run dev`
+in another terminal):
+
+```bash
+npx tsx scripts/e2e-role-rbac-test.ts
+```
+
+Logs in as all 6 roles (needs a real seed-password account per role — see
+`scripts/find-faculty-login.ts` / `scripts/discover-test-fixtures.ts` for
+how to find or derive them) and exercises, over real HTTP: the entire RBAC
+matrix (every trained intent × every role), fuzzy/typo/out-of-order admin
+lookup phrasing, multi-turn session state (last-student carryover and the
+pendingIntent clarification follow-up), RBAC security backstops (a
+self-service role naming someone else's real ID, unlinked accounts, cross-
+user session isolation), and real-data correctness on every wired handler.
+This is what found the parent/hod/coe utility-intent gap and the two
+classifier collisions described above and below.
 
 With no database reachable, every non-DB path (health check, JWT
 verification, RBAC denial, low-confidence fallback, all utility intents)
