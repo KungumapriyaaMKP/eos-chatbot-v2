@@ -129,12 +129,26 @@ export async function redirectRequest({ match }: HandlerContext): Promise<ChatRe
   return { reply, intent: match.intent, confidence: match.confidence };
 }
 
-/** Any intent the classifier recognises correctly but that has no wired handler yet — see README "Intent coverage". */
-export async function notWiredUp({ match }: HandlerContext): Promise<ChatReply> {
+/**
+ * Any intent the classifier recognises correctly but that has no wired
+ * handler yet — see README "Intent coverage". The suggestion list is built
+ * from WIRED_INTENT_LABELS the same way help() above does, rather than a
+ * hardcoded string — that string went stale more than once as real
+ * handlers got added (bus/route, leave status, faculty classes, ...) and
+ * kept telling people to ask about a fixed, shrinking list of topics that
+ * no longer matched what was actually wired up.
+ */
+export async function notWiredUp({ user, match }: HandlerContext): Promise<ChatReply> {
+  const allowedLabels = getAllIntents()
+    .filter((i) => i.roles.includes(user.role) && WIRED_INTENT_LABELS[i.name])
+    .map((i) => WIRED_INTENT_LABELS[i.name]);
+  const unique = [...new Set(allowedLabels)];
+
+  const suggestion =
+    unique.length > 0 ? `Please try asking about ${joinNaturally(unique)}.` : "I'm still being set up for your role, so please check back soon.";
+
   return {
-    reply:
-      `I understood that as "${match.intent}", but I'm not connected to that part of the system yet. ` +
-      'Please try asking about attendance, marks, timetable, fees, exam schedule, announcements, subjects, or profile.',
+    reply: `I understood that as "${match.intent}", but I'm not connected to that part of the system yet. ${suggestion}`,
     intent: match.intent,
     confidence: match.confidence,
   };
