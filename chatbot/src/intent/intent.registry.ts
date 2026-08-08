@@ -15,6 +15,8 @@ import { adminListStudents, adminListFaculty } from '../services/admin-directory
 import { getMyBus, getBusLocation, getRouteStops } from '../services/transport.service';
 import { getLeaveStatus } from '../services/leave-status.service';
 import { getFacultyLeaveStatus } from '../services/faculty-leave-status.service';
+import { getSectionPerformance } from '../services/section-performance.service';
+import { getExamEligibility } from '../services/exam-eligibility.service';
 import {
   greeting,
   help,
@@ -61,6 +63,7 @@ export const INTENT_HANDLERS: Record<string, IntentHandler> = {
   get_marks: getMarks,
   get_fees: getFees,
   get_exam_schedule: getExamSchedule,
+  get_exam_eligibility: getExamEligibility,
   get_announcements: getAnnouncements,
   get_my_subjects: getSubjects,
   get_mentor: getMentor,
@@ -76,6 +79,7 @@ export const INTENT_HANDLERS: Record<string, IntentHandler> = {
   faculty_class_attendance: getClassAttendance,
   section_students: getSectionStudents,
   faculty_leave_status: getFacultyLeaveStatus,
+  section_performance: getSectionPerformance,
 
   // Admin
   admin_list_students: adminListStudents,
