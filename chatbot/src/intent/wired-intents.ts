@@ -27,6 +27,7 @@ export const WIRED_INTENT_LABELS: Record<string, string> = {
   get_route_stops: 'your route stops',
   get_leave_status: 'your leave applications',
   faculty_my_classes: 'the classes you teach',
+  faculty_leave_status: 'your leave applications',
   faculty_class_attendance: "a class's attendance",
   section_students: 'a class roster',
   admin_list_students: 'the student directory',

@@ -4,6 +4,7 @@ import { INTENT_HANDLERS } from '../intent/intent.registry';
 import { isRoleAllowedForIntent } from '../middleware/rbac.middleware';
 import { notWiredUp } from '../services/utility.service';
 import { getSessionContext } from '../intent/session-context';
+import { SIBLING_INTENTS } from '../intent/sibling-intents';
 import { AppError } from '../utils/http-error';
 import { logger } from '../utils/logger';
 import { LOW_CONFIDENCE_MESSAGE, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
@@ -59,10 +60,27 @@ export async function chatHandler(req: Request, res: Response, next: NextFunctio
     }
 
     if (!isRoleAllowedForIntent(user.role, match.roles)) {
-      logger.warn('chat', `RBAC denied: user=${user.sub} role=${user.role} intent=${match.intent}`);
-      const reply: ChatReply = { reply: NO_PERMISSION_MESSAGE, intent: match.intent, confidence: match.confidence };
-      res.status(200).json(reply);
-      return;
+      // Before denying outright, check whether this intent has a listed
+      // "sibling" — the literal same question, asked from a different
+      // role's vantage point (see sibling-intents.ts) — that DOES allow
+      // this caller's role. A classifier that only sees text can't always
+      // tell "check my leave application" (student) from the identical
+      // sentence (faculty) apart; if the sibling fits, route there
+      // instead of denying someone access to their own real data over a
+      // coin-flip in which of two equivalent intents got matched.
+      const sibling = (SIBLING_INTENTS[match.intent!] ?? [])
+        .map((name: string) => getIntentDefinition(name))
+        .find((def): def is NonNullable<typeof def> => def !== undefined && isRoleAllowedForIntent(user.role, def.roles));
+
+      if (sibling) {
+        logger.log('chat', `Rerouted via sibling intent: user=${user.sub} role=${user.role} ${match.intent} -> ${sibling.name}`);
+        match = { intent: sibling.name, confidence: match.confidence, matchedExample: null, roles: sibling.roles, module: sibling.module };
+      } else {
+        logger.warn('chat', `RBAC denied: user=${user.sub} role=${user.role} intent=${match.intent}`);
+        const reply: ChatReply = { reply: NO_PERMISSION_MESSAGE, intent: match.intent, confidence: match.confidence };
+        res.status(200).json(reply);
+        return;
+      }
     }
 
     const ctx: HandlerContext = { user, message, match };

@@ -14,6 +14,7 @@ import { getFacultyClasses, getClassAttendance, getSectionStudents } from '../se
 import { adminListStudents, adminListFaculty } from '../services/admin-directory.service';
 import { getMyBus, getBusLocation, getRouteStops } from '../services/transport.service';
 import { getLeaveStatus } from '../services/leave-status.service';
+import { getFacultyLeaveStatus } from '../services/faculty-leave-status.service';
 import {
   greeting,
   help,
@@ -74,6 +75,7 @@ export const INTENT_HANDLERS: Record<string, IntentHandler> = {
   faculty_my_classes: getFacultyClasses,
   faculty_class_attendance: getClassAttendance,
   section_students: getSectionStudents,
+  faculty_leave_status: getFacultyLeaveStatus,
 
   // Admin
   admin_list_students: adminListStudents,

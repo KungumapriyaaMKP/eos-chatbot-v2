@@ -37,9 +37,29 @@ async function chat(token: string, message: string): Promise<{ reply: string; in
 }
 
 const CHECKS: Record<string, string[]> = {
-  student: ['my marks', 'my attendance', "today's timetable", 'my fees', 'my subjects', 'my mentor', 'my bus route', 'leave balance', 'library hours'],
+  student: [
+    'my marks',
+    'my attendance',
+    "today's timetable",
+    'my fees',
+    'my subjects',
+    'my mentor',
+    'my bus route',
+    'leave balance',
+    'library hours',
+    // Sibling-routing check (sibling-intents.ts): this phrasing classifies
+    // to the faculty-only intent, but a student's own role should still
+    // get their own real leave data via the sibling fallback, not a denial.
+    'how many leaves have i taken this month',
+  ],
   parent: ['my child marks', "my child's attendance"],
-  faculty: ['my classes', 'classes handled by Suresh Kumar'],
+  faculty: [
+    'my classes',
+    'classes handled by Suresh Kumar',
+    // Sibling-routing check, the reverse direction — student-phrased leave
+    // wording should still resolve to the faculty's own leave data.
+    'check my leave application',
+  ],
   hod: ['classes in my department', 'faculty list'],
   admin: ['list students', 'list faculty', 'marks for 22CS001'],
   coe: ['exam schedule for 22CS001'],
