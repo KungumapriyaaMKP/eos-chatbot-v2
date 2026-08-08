@@ -13,6 +13,7 @@ import { getLibraryHours } from '../services/library.service';
 import { getFacultyClasses, getClassAttendance, getSectionStudents } from '../services/faculty-classes.service';
 import { adminListStudents, adminListFaculty } from '../services/admin-directory.service';
 import { getMyBus, getBusLocation, getRouteStops } from '../services/transport.service';
+import { getLeaveStatus } from '../services/leave-status.service';
 import {
   greeting,
   help,
@@ -67,6 +68,7 @@ export const INTENT_HANDLERS: Record<string, IntentHandler> = {
   get_my_bus: getMyBus,
   get_bus_location: getBusLocation,
   get_route_stops: getRouteStops,
+  get_leave_status: getLeaveStatus,
 
   // Faculty
   faculty_my_classes: getFacultyClasses,
