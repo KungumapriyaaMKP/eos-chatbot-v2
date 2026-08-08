@@ -191,6 +191,18 @@ Edit `.env`:
   also caps this app's own pool (`max: 3`) and `src/server.ts` disconnects
   cleanly on `SIGINT`/`SIGTERM` — but a hard `kill -9` / force-stop skips
   that, so the pooler-mode choice is the real fix, not just cleanup on our side.
+
+  **A free-tier Supabase project can also auto-pause after a period of no
+  traffic**, and the next request or two can fail while it wakes back up —
+  seen live as a ~1-minute burst of `P1001 Can't reach database server`
+  errors that then resolved on their own with no code change. Nothing in
+  this app's code can make Supabase wake up faster, but `errorHandler.middleware.ts`
+  specifically detects this class of Prisma error (`P1001`/`P1002`/`P1008`/`P1017`
+  — "can't reach the database at all", not a query that ran and hit a real
+  problem) and returns a clear `503 "Our systems are temporarily
+  unavailable. Please try again in a moment."` instead of lumping it in
+  with the generic `500 "Something went wrong"` a real bug would produce —
+  same failure, but honest about which kind it is.
 - `CHATBOT_JWT_SECRET` — any long random string. Independent of EOS-backend's
   `JWT_SECRET` on purpose (see `src/auth/README.md`).
 - `INTENT_CONFIDENCE_THRESHOLD` — default `0.55`, tune after reviewing real traffic.
