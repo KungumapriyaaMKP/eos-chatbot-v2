@@ -30,6 +30,32 @@ export interface StudentLookupResult {
    * by name instead of the generic admin-style prompt.
    */
   candidates?: ResolvedStudent[];
+  /**
+   * Populated when a student/parent's message contains something clearly
+   * ID-shaped (see looksLikeIntentionalId below) that matches no real
+   * student at all — neither the caller's own record nor anyone else's.
+   * Previously this silently fell through to showing the caller's own data
+   * with no acknowledgment the mentioned ID didn't exist, which is
+   * confusing to a real user and — worse — reads exactly like a permission
+   * bypass to someone testing it, even though no other student's data was
+   * ever actually at risk (the forbidden-flag backstop above already
+   * covers the case where the ID DOES belong to a real different person).
+   */
+  unrecognizedId?: string;
+}
+
+/**
+ * True only for tokens that plausibly WERE meant as a student ID reference
+ * — has both a letter and a digit, and is long enough to not be "sem2" or
+ * a bare year like "2024" (digits-only, or too short, stay silently
+ * ignored exactly like before — those are far more likely to be
+ * incidental noise than a real ID reference, and the whole reason the
+ * broader ID_LIKE_PATTERN below tolerates short/loose matches is so a
+ * genuine ID with a typo still resolves; being this permissive about what
+ * counts as "the user clearly meant an ID" would defeat that).
+ */
+function looksLikeIntentionalId(token: string): boolean {
+  return /[A-Za-z]/.test(token) && /[0-9]/.test(token) && token.length >= 5;
 }
 
 const STUDENT_SELECT = {
@@ -96,12 +122,20 @@ async function resolveOwnStudent(userId: number, message: string): Promise<Stude
   const own = await prisma.students.findUnique({ where: { user_id: userId }, select: STUDENT_SELECT });
 
   const idLikeTokens = message.match(ID_LIKE_PATTERN) ?? [];
+  let unrecognizedId: string | null = null;
   for (const token of idLikeTokens) {
     if (own && token.toLowerCase() === own.student_id_no.toLowerCase()) continue;
     const other = await findByExactId(token);
     if (other && (!own || other.id !== own.id)) {
       return { student: null, forbidden: true };
     }
+    if (!other && !unrecognizedId && looksLikeIntentionalId(token)) {
+      unrecognizedId = token;
+    }
+  }
+
+  if (unrecognizedId) {
+    return { student: null, forbidden: false, unrecognizedId };
   }
 
   return { student: own ? toResolved(own) : null, forbidden: false };
@@ -135,6 +169,7 @@ async function resolveParentChild(userId: number, message: string): Promise<Stud
   }
 
   const idLikeTokens = message.match(ID_LIKE_PATTERN) ?? [];
+  let unrecognizedId: string | null = null;
   for (const token of idLikeTokens) {
     const ownChild = children.find(
       (c) =>
@@ -147,10 +182,17 @@ async function resolveParentChild(userId: number, message: string): Promise<Stud
     if (other) {
       return { student: null, forbidden: true };
     }
+    if (!unrecognizedId && looksLikeIntentionalId(token)) {
+      unrecognizedId = token;
+    }
   }
 
   if (children.length === 1) {
-    return { student: toResolved(children[0]), forbidden: false };
+    // Same "don't silently substitute" fix as resolveOwnStudent above — a
+    // parent naming an ID that matches none of their children AND no real
+    // student anywhere gets told so, instead of silently seeing their one
+    // child's data as if nothing was wrong with what they typed.
+    return unrecognizedId ? { student: null, forbidden: false, unrecognizedId } : { student: toResolved(children[0]), forbidden: false };
   }
 
   const byExactId = idLikeTokens
@@ -313,6 +355,10 @@ export function notFoundReply(
   resource: string,
   intentName: string,
 ): string {
+  if (result.unrecognizedId) {
+    updateSessionContext(user.sub, { pendingIntent: intentName });
+    return `I couldn't find a student with ID "${result.unrecognizedId}".`;
+  }
   if (result.candidates && result.candidates.length > 0) {
     updateSessionContext(user.sub, { pendingIntent: intentName });
     return parentLookupPrompt(resource, result.candidates);
