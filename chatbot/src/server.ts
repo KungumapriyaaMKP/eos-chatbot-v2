@@ -3,6 +3,7 @@ import { env } from './config/env';
 import { logger } from './utils/logger';
 import { warmUpIntentClassifier } from './intent/intent.classifier';
 import { prisma } from './utils/prisma';
+import { startScheduledAnalysis } from './scripts/scheduled-analyzer';
 
 async function bootstrap() {
   // Loads the SBERT model + trained embeddings once at startup, so the
@@ -19,10 +20,15 @@ async function bootstrap() {
 
   const app = createApp();
 
+  // Start scheduled learning pipeline
+  startScheduledAnalysis();
+
   const server = app.listen(env.port, () => {
     logger.log('bootstrap', `🤖 EOS Chatbot running on http://localhost:${env.port}`);
     logger.log('bootstrap', `   POST /auth/login  — temporary login (see src/auth/README.md)`);
     logger.log('bootstrap', `   POST /chat        — ask a question (Bearer token required)`);
+    logger.log('bootstrap', `   POST /learning/feedback — record user feedback`);
+    logger.log('bootstrap', `   GET /learning/stats — get query statistics`);
   });
 
   // Releases the DB connection pool cleanly on shutdown — matters

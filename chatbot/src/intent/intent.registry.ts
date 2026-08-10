@@ -11,12 +11,28 @@ import { getMentor } from '../services/mentor.service';
 import { getHolidays } from '../services/holidays.service';
 import { getLibraryHours } from '../services/library.service';
 import { getFacultyClasses, getClassAttendance, getSectionStudents } from '../services/faculty-classes.service';
+import { getFacultyBySubject } from '../services/faculty-by-subject.service';
 import { adminListStudents, adminListFaculty } from '../services/admin-directory.service';
 import { getMyBus, getBusLocation, getRouteStops } from '../services/transport.service';
 import { getLeaveStatus } from '../services/leave-status.service';
 import { getFacultyLeaveStatus } from '../services/faculty-leave-status.service';
 import { getSectionPerformance } from '../services/section-performance.service';
 import { getExamEligibility } from '../services/exam-eligibility.service';
+import { adminVendorQuotes } from '../services/admin-vendor.service';
+import { getBonafideStatus } from '../services/bonafide.service';
+import { getBorrowedBooks, searchBooks } from '../services/library-borrowed.service';
+import { getHallTicket, getExamSeat, getMarksheet, getRevaluationStatus } from '../services/exam-documents.service';
+import { getHostelRoom, getHostelLedger, getOutingStatus } from '../services/hostel.service';
+import { getFeeBreakup, getDDStatus } from '../services/fee-details.service';
+import { getUpcomingDrives, getDriveApplications } from '../services/placement.service';
+import { getODStatus, getNotifications, getSubjectNotes } from '../services/student-requests.service';
+import { getFacultyMentees, getFacultyPayslip, getFacultyInvigilation, getFacultyAppraisal, getFacultyLowAttendance } from '../services/faculty-extended.service';
+import { getAdminFeeCollection, getAdminOverdueBooks, getAdminPendingApprovals, getAdminStudentsOutNow, getAdminHostelOccupancy, getAdminMarksEntryStatus } from '../services/admin-analytics.service';
+import { getMyProjects, getProjectJoinRequests } from '../services/student-projects.service';
+import { getStudentCertificates } from '../services/certificates.service';
+import { getWalletBalance, rechargeWallet } from '../services/wallet.service';
+import { submitFeedbackForm, getActiveSurveys } from '../services/feedback.service';
+import { searchAlumniNetwork, getResultPublicationStatus, viewDepartmentAchievements } from '../services/alumni.service';
 import {
   greeting,
   help,
@@ -64,15 +80,42 @@ export const INTENT_HANDLERS: Record<string, IntentHandler> = {
   get_fees: getFees,
   get_exam_schedule: getExamSchedule,
   get_exam_eligibility: getExamEligibility,
+  get_exam_seat: getExamSeat,
+  get_hall_ticket: getHallTicket,
+  get_marksheet: getMarksheet,
+  get_revaluation_status: getRevaluationStatus,
   get_announcements: getAnnouncements,
   get_my_subjects: getSubjects,
   get_mentor: getMentor,
   get_holidays: getHolidays,
   library_hours: getLibraryHours,
+  get_borrowed_books: getBorrowedBooks,
+  search_books: searchBooks,
   get_my_bus: getMyBus,
   get_bus_location: getBusLocation,
   get_route_stops: getRouteStops,
   get_leave_status: getLeaveStatus,
+  get_od_status: getODStatus,
+  get_outing_status: getOutingStatus,
+  get_notifications: getNotifications,
+  get_subject_notes: getSubjectNotes,
+  get_bonafide_status: getBonafideStatus,
+  get_hostel_room: getHostelRoom,
+  get_hostel_ledger: getHostelLedger,
+  get_fee_breakup: getFeeBreakup,
+  get_dd_status: getDDStatus,
+  get_upcoming_drives: getUpcomingDrives,
+  get_drive_applications: getDriveApplications,
+  get_my_projects: getMyProjects,
+  project_join_requests_status: getProjectJoinRequests,
+  get_student_certificates: getStudentCertificates,
+  get_wallet_balance: getWalletBalance,
+  wallet_recharge: rechargeWallet,
+  submit_feedback_form: submitFeedbackForm,
+  get_active_surveys: getActiveSurveys,
+  alumni_network_search: searchAlumniNetwork,
+  get_result_publication_status: getResultPublicationStatus,
+  view_department_achievements: viewDepartmentAchievements,
 
   // Faculty
   faculty_my_classes: getFacultyClasses,
@@ -80,10 +123,23 @@ export const INTENT_HANDLERS: Record<string, IntentHandler> = {
   section_students: getSectionStudents,
   faculty_leave_status: getFacultyLeaveStatus,
   section_performance: getSectionPerformance,
+  get_faculty_by_subject: getFacultyBySubject,
+  faculty_mentees: getFacultyMentees,
+  faculty_payslip: getFacultyPayslip,
+  faculty_invigilation: getFacultyInvigilation,
+  faculty_appraisal: getFacultyAppraisal,
+  faculty_low_attendance: getFacultyLowAttendance,
 
   // Admin
   admin_list_students: adminListStudents,
   admin_list_faculty: adminListFaculty,
+  admin_vendor_quotes: adminVendorQuotes,
+  admin_fee_collection: getAdminFeeCollection,
+  admin_overdue_books: getAdminOverdueBooks,
+  admin_pending_approvals: getAdminPendingApprovals,
+  admin_students_out_now: getAdminStudentsOutNow,
+  admin_hostel_occupancy: getAdminHostelOccupancy,
+  admin_marks_entry_status: getAdminMarksEntryStatus,
 
   // Utility (no DB access)
   greeting,

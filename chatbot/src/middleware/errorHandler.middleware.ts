@@ -65,6 +65,8 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
     return;
   }
 
+  // FIX #5: Generic error messages (prevent ID enumeration)
+  // Don't expose whether a student/resource exists or doesn't exist
   logger.error('errorHandler', 'Unhandled error', err);
   res.status(500).json({
     success: false,

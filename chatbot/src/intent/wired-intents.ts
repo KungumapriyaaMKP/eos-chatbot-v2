@@ -34,4 +34,5 @@ export const WIRED_INTENT_LABELS: Record<string, string> = {
   section_students: 'a class roster',
   admin_list_students: 'the student directory',
   admin_list_faculty: 'the faculty directory',
+  admin_vendor_quotes: 'vendor quotations',
 };

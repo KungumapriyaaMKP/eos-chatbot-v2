@@ -1,0 +1,56 @@
+/**
+ * Chatbot Learning & Improvement Tables
+ *
+ * These tables are used to collect user queries, feedback, and train the model
+ * They are added as a separate file and should be appended to the main schema.prisma
+ */
+
+model query_logs {
+  id                    Int       @id @default(autoincrement())
+  user_id               Int
+  message               String    @db.Text
+  intent_detected       String?   @db.VarChar(100)
+  confidence            Decimal?  @db.Decimal(4, 3)
+  is_correct            Boolean?
+  correct_intent        String?   @db.VarChar(100)
+  user_feedback_rating  Int?      @db.SmallInt // 1-5 star rating
+  user_notes            String?   @db.Text
+  created_at            DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([user_id], map: "idx_query_logs_user")
+  @@index([intent_detected], map: "idx_query_logs_intent")
+  @@index([confidence], map: "idx_query_logs_confidence")
+  @@index([created_at], map: "idx_query_logs_created")
+}
+
+model training_examples {
+  id              Int       @id @default(autoincrement())
+  query_text      String    @db.Text
+  intent_name     String    @db.VarChar(100)
+  source          String    @db.VarChar(50) // "user_query" or "manual"
+  confidence      Decimal?  @db.Decimal(4, 3)
+  usage_count     Int       @default(1)
+  approved_at     DateTime? @db.Timestamptz(6)
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@unique([query_text, intent_name], map: "uniq_training_examples")
+  @@index([intent_name], map: "idx_training_examples_intent")
+  @@index([approved_at], map: "idx_training_examples_approved")
+}
+
+model model_performance {
+  id                      Int       @id @default(autoincrement())
+  training_date           DateTime  @db.Timestamptz(6)
+  total_queries_analyzed  Int
+  accuracy_rate           Decimal   @db.Decimal(5, 2)
+  misclassification_count Int
+  avg_confidence          Decimal   @db.Decimal(4, 3)
+  low_confidence_count    Int       // Predictions below 0.60
+  positive_feedback_pct   Decimal   @db.Decimal(5, 2)
+  new_examples_added      Int
+  retrain_triggered       Boolean   @default(false)
+  notes                   String?   @db.Text
+  created_at              DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([training_date], map: "idx_model_perf_date")
+}

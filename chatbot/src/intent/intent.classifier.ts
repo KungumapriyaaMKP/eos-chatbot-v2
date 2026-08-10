@@ -3,6 +3,7 @@ import path from 'node:path';
 import { embedText } from './embedder';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
+import { withTimeout } from '../utils/timeout';
 import type { EmbeddingsFile, IntentDataset, IntentDefinition, IntentMatch } from './intent.types';
 
 const INTENTS_PATH = path.join(__dirname, '..', 'embeddings', 'intents.json');
@@ -54,7 +55,8 @@ function dot(a: number[], b: number[]): number {
 export async function classifyIntent(message: string): Promise<IntentMatch> {
   loadArtifacts();
 
-  const queryVector = await embedText(message);
+  // FIX #2: Add timeout to prevent indefinite hangs
+  const queryVector = await withTimeout(embedText(message), 5000, 'Intent classification');
 
   let bestScore = -1;
   let bestIntent: string | null = null;

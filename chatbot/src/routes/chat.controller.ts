@@ -9,6 +9,7 @@ import { AppError } from '../utils/http-error';
 import { logger } from '../utils/logger';
 import { LOW_CONFIDENCE_MESSAGE, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
 import type { HandlerContext, IntentMatch } from '../intent/intent.types';
+import { logQuery } from '../services/learning/query-logger.service';
 
 /**
  * POST /chat — the entire pipeline described in the brief:
@@ -87,6 +88,15 @@ export async function chatHandler(req: Request, res: Response, next: NextFunctio
     const handler = INTENT_HANDLERS[match.intent!] ?? notWiredUp;
 
     const reply = await handler(ctx);
+
+    // Log query for learning pipeline (async, non-blocking)
+    logQuery({
+      userId: user.sub,
+      message,
+      intentDetected: match.intent || undefined,
+      confidence: match.confidence || undefined,
+    }).catch(() => {}); // Ignore errors
+
     res.status(200).json(reply);
   } catch (err) {
     next(err);
