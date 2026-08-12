@@ -11,7 +11,22 @@ export interface CandidateClass {
   label: string; // e.g. "CSE-A"
 }
 
-async function facultyAssignedClasses(facultyId: number): Promise<CandidateClass[]> {
+/**
+ * faculty_subject_class_mapping/class_mentors are keyed by faculty.id, NOT
+ * users.id — a real, previously-shipped bug had this function called with
+ * user.sub directly (the JWT's user id), which only ever coincidentally
+ * matched a real faculty_id and otherwise silently returned zero classes,
+ * misreporting "you're not assigned to any classes" for a faculty member
+ * who very much was. Confirmed live: one real account had user.id=29,
+ * faculty.id=2 — completely different numbers.
+ */
+async function resolveFacultyId(userId: number): Promise<number | null> {
+  const faculty = await prisma.faculty.findUnique({ where: { user_id: userId }, select: { id: true } });
+  return faculty?.id ?? null;
+}
+
+async function facultyAssignedClasses(facultyId: number | null): Promise<CandidateClass[]> {
+  if (facultyId === null) return [];
   const [subjectMappings, mentorMappings] = await Promise.all([
     prisma.faculty_subject_class_mapping.findMany({ where: { faculty_id: facultyId }, select: { class_id: true } }),
     prisma.class_mentors.findMany({ where: { faculty_id: facultyId }, select: { class_id: true } }),
@@ -83,7 +98,7 @@ export async function resolveTargetClass(
 ): Promise<{ match: CandidateClass | null; candidates: CandidateClass[] }> {
   const candidates =
     user.role === ROLES.FACULTY
-      ? await facultyAssignedClasses(user.sub)
+      ? await facultyAssignedClasses(await resolveFacultyId(user.sub))
       : user.role === ROLES.HOD
         ? await hodDepartmentClasses(user.sub)
         : user.role === ROLES.ADMIN
