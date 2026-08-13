@@ -18,6 +18,7 @@ export const WIRED_INTENT_LABELS: Record<string, string> = {
   get_fees: 'your fee status',
   get_exam_schedule: 'your exam schedule',
   get_exam_eligibility: 'your exam eligibility',
+  get_semester_dates: 'your semester dates',
   get_announcements: 'announcements',
   get_my_subjects: 'your subjects',
   get_mentor: 'your class mentor',

@@ -18,6 +18,7 @@ import { getLeaveStatus } from '../services/leave-status.service';
 import { getFacultyLeaveStatus } from '../services/faculty-leave-status.service';
 import { getSectionPerformance } from '../services/section-performance.service';
 import { getExamEligibility } from '../services/exam-eligibility.service';
+import { getSemesterDates } from '../services/semester-dates.service';
 import { adminVendorQuotes } from '../services/admin-vendor.service';
 import { getBonafideStatus } from '../services/bonafide.service';
 import { getBorrowedBooks, searchBooks } from '../services/library-borrowed.service';
@@ -80,6 +81,7 @@ export const INTENT_HANDLERS: Record<string, IntentHandler> = {
   get_fees: getFees,
   get_exam_schedule: getExamSchedule,
   get_exam_eligibility: getExamEligibility,
+  get_semester_dates: getSemesterDates,
   get_exam_seat: getExamSeat,
   get_hall_ticket: getHallTicket,
   get_marksheet: getMarksheet,

@@ -56,6 +56,17 @@ const STOPWORDS = new Set([
   'a', 'an', 'the', 'of', 'in', 'on', 'at', 'to', 'for', 'and', 'or', 'is', 'are', 'my', 'your',
   'their', 'his', 'her', 'show', 'give', 'me', 'tell', 'what', 'get', 'please', 'can', 'you', 'i',
   'with', 'about',
+  // Generic academic-naming words shared across many otherwise-unrelated
+  // subjects ("Elective - DevOps", "Elective - Blockchain Technology", ...
+  // — every elective shares "elective"). Without excluding these, the
+  // per-word match below gives EVERY elective a perfect 1.0 score off that
+  // one shared word alone, before the actual differentiating word ever
+  // gets compared — confirmed live: "Elective - Devops" matched
+  // "Elective - Blockchain Technology" instead of "Elective - DevOps"
+  // itself, purely because "elective" is a substring/word match against
+  // every candidate and ties resolve to whichever the DB happened to
+  // return first.
+  'elective', 'electives', 'core', 'lab', 'laboratory',
 ]);
 
 /**
