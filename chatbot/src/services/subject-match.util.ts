@@ -110,13 +110,61 @@ export interface MatchedExamType {
 }
 
 /**
+ * Common shorthand for exam types ("IA1", "last internal", "semester exam")
+ * that bears no textual similarity to the real exam_types.name at all — a
+ * pure fuzzy-string match can catch someone typing "Internal Assesment 2"
+ * (a typo of the real name), but has no mechanism to know "last internal"
+ * means "Internal Assessment II" specifically, since neither word appears
+ * in that name. Each pattern maps to a NAME SUBSTRING that must appear
+ * (case-insensitively) in a real exam_types.name — not a hardcoded id —
+ * so this still works if the exact wording of "Internal Assessment II"
+ * ever changes in the data, as long as the I/II numbering convention holds.
+ *
+ * "last"/"latest"/"final" internal deliberately maps to II, not I — with
+ * only two internal assessments per subject in this schema, "the last one"
+ * means whichever comes chronologically after the other, which is II by
+ * this institution's own naming convention (I before II).
+ */
+const EXAM_TYPE_PATTERNS: Array<{ pattern: RegExp; nameContains: string }> = [
+  { pattern: /\bia\s?1\b|\bfirst internal\b|\binternal (assessment |exam )?1\b/i, nameContains: 'i' },
+  { pattern: /\bia\s?2\b|\bsecond internal\b|\b(last|latest|final) internal\b|\binternal (assessment |exam )?2\b/i, nameContains: 'ii' },
+  { pattern: /\b(semester|university|sem|final) exam(ination)?\b/i, nameContains: 'semester' },
+  { pattern: /\bmodel exam(ination)?\b/i, nameContains: 'model' },
+];
+
+/**
+ * Roman-numeral-aware exact suffix match — "internal assessment i" is a
+ * SUBSTRING of "internal assessment ii" (both start with "internal
+ * assessment i"), so a plain .includes('i') would false-positive match on
+ * "Internal Assessment II" too. Comparing the trailing token exactly
+ * (split on whitespace, last word) avoids that.
+ */
+function nameEndsWithToken(name: string, token: string): boolean {
+  const words = name.toLowerCase().trim().split(/\s+/);
+  return words[words.length - 1] === token;
+}
+
+/**
  * Best-effort "did the user ask about a specific exam" check — e.g. "marks
  * in the last internal" or "semester exam results" — moved here (from
  * section-performance.service.ts, the only prior caller) so get_marks can
  * reuse it too instead of always dumping the caller's entire mark history
- * regardless of which single exam they actually asked about.
+ * regardless of which single exam they actually asked about. Tries the
+ * known-shorthand patterns above first (since those carry no textual
+ * overlap with the real name for fuzzy matching to find), then falls back
+ * to fuzzy matching against the exam type's actual name.
  */
 export async function matchExamTypeInMessage(message: string): Promise<MatchedExamType | null> {
   const examTypes = await prisma.exam_types.findMany({ select: { id: true, name: true } });
+
+  for (const { pattern, nameContains } of EXAM_TYPE_PATTERNS) {
+    if (!pattern.test(message)) continue;
+    const found =
+      nameContains === 'i' || nameContains === 'ii'
+        ? examTypes.find((e) => nameEndsWithToken(e.name, nameContains))
+        : examTypes.find((e) => e.name.toLowerCase().includes(nameContains));
+    if (found) return found;
+  }
+
   return fuzzyFindBest(message, examTypes, (e) => ({ name: e.name }));
 }
