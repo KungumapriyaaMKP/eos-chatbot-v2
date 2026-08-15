@@ -27,7 +27,7 @@ export async function getMarks({ user, message }: HandlerContext): Promise<ChatR
     return { reply: notFoundReply(user, result, 'their marks', 'get_marks'), intent: 'get_marks', confidence: 1 };
   }
 
-  const subject = await matchSubjectInMessage(message);
+  const subject = await matchSubjectInMessage(message, target.class_id);
   const publishedOnly = user.role === ROLES.STUDENT || user.role === ROLES.PARENT;
 
   const rows = await prisma.exam_marks.findMany({
