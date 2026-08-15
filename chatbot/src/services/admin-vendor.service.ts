@@ -2,6 +2,7 @@ import { prisma } from '../utils/prisma';
 import { AppError } from '../utils/http-error';
 import { markdownTable, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
+import { logger } from '../utils/logger';
 
 /**
  * Admin: Vendor quotations for purchase items.
@@ -48,7 +49,7 @@ export async function adminVendorQuotes({ user, message }: HandlerContext): Prom
       data: { total: quotations.length, quotations },
     };
   } catch (error) {
-    console.error('Vendor quotes error:', error);
+    logger.error('admin-vendor', `adminVendorQuotes failed for user ${user.sub}: ${error}`);
     if (error instanceof AppError) throw error;
     throw AppError.internal('Failed to fetch vendor quotations');
   }
