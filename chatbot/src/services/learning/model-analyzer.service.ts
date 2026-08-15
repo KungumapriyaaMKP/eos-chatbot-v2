@@ -2,8 +2,21 @@ import { prisma } from '../../utils/prisma';
 import { logger } from '../../utils/logger';
 
 /**
- * Analyze queries and identify candidates for retraining
- * No admin review - auto-approve if confidence is correct
+ * Analyze queries and identify CANDIDATE training examples for retraining.
+ *
+ * REVIEW GATE: candidates land with approved_at = null (pending review),
+ * never auto-approved. This USED to stamp approved_at with the current
+ * timestamp at the exact moment of insert — meaning a query the caller
+ * themselves marked "correct" (is_correct=true, entirely self-reported, no
+ * verification) or a correct_intent someone typed into a feedback form
+ * became "approved" training data instantly, with no human ever looking at
+ * it. That's a real data-poisoning path: anyone who can hit /chat and
+ * /learning/feedback could shape future classifier training just by
+ * asserting labels. Candidates are still auto-INSERTED here (that part's
+ * fine — it's just data collection) but require an explicit approval step
+ * before scripts/merge-approved-training-examples.ts will ever pull them
+ * into the real dataset. See scripts/review-training-candidates.ts and
+ * scripts/approve-training-candidates.ts.
  */
 export async function analyzeAndPrepareRetrainingData(daysBack: number = 7) {
   const since = new Date();
@@ -58,12 +71,13 @@ export async function analyzeAndPrepareRetrainingData(daysBack: number = 7) {
         });
 
         if (existing) {
+          // Re-occurrence of an already-known candidate: bump usage_count
+          // only. Deliberately does NOT touch approved_at either way — if a
+          // human already approved this one, seeing it again shouldn't need
+          // re-approval; if it's still pending, it stays pending.
           await prisma.training_examples.update({
             where: { id: existing.id },
-            data: {
-              usage_count: { increment: 1 },
-              approved_at: new Date(),
-            },
+            data: { usage_count: { increment: 1 } },
           });
         } else {
           await prisma.training_examples.create({
@@ -72,7 +86,7 @@ export async function analyzeAndPrepareRetrainingData(daysBack: number = 7) {
               intent_name: query.correct_intent,
               source: 'user_query',
               confidence: 0.5,
-              approved_at: new Date(),
+              // approved_at intentionally omitted (stays null = pending review).
             },
           });
         }
@@ -95,12 +109,14 @@ export async function analyzeAndPrepareRetrainingData(daysBack: number = 7) {
         });
 
         if (existing) {
+          // Same non-approval-touching update as the incorrect-predictions
+          // branch above — bump usage_count/confidence, leave approved_at
+          // as whatever a human already set it to (or hasn't).
           await prisma.training_examples.update({
             where: { id: existing.id },
             data: {
               usage_count: { increment: 1 },
               confidence: query.confidence ? parseFloat(query.confidence.toString()) : 0.85,
-              approved_at: new Date(),
             },
           });
         } else {
@@ -110,7 +126,7 @@ export async function analyzeAndPrepareRetrainingData(daysBack: number = 7) {
               intent_name: query.intent_detected,
               source: 'user_query',
               confidence: query.confidence ? parseFloat(query.confidence.toString()) : 0.85,
-              approved_at: new Date(),
+              // approved_at intentionally omitted (stays null = pending review).
             },
           });
         }
@@ -149,7 +165,11 @@ export async function analyzeAndPrepareRetrainingData(daysBack: number = 7) {
       low_confidence_count: lowConfidence.length,
       positive_feedback_pct: total > 0 ? parseFloat(((correctCount / total) * 100).toFixed(2)) : 0,
       new_examples_added: addedCount,
-      retrain_triggered: addedCount > 10, // Trigger retrain if more than 10 new examples
+      // NOT an actual automatic retrain — see the review-gate note at the
+      // top of this file. This just flags "enough NEW PENDING candidates
+      // piled up that a human should go run
+      // scripts/review-training-candidates.ts", nothing runs on its own.
+      retrain_triggered: addedCount > 10,
     },
   });
 
