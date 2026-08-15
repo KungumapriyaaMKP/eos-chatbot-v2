@@ -2,23 +2,32 @@
 
 A conversational backend for the EOS ERP system. It understands a question in
 plain English, detects intent completely offline with Sentence-BERT
-(`all-MiniLM-L6-v2`), checks the caller's role, fetches the answer from the
-**existing EOS database**, and replies in plain English.
+(`paraphrase-multilingual-MiniLM-L12-v2`), checks the caller's role, fetches
+the answer from the **existing EOS database**, and replies in plain English.
 
-No LLM. No external AI API. No API key. Works fully offline after one-time
-model download. No new database tables, no new users, no duplicated business
-logic — see [Architecture](#architecture) for exactly what's reused vs. new.
+No external AI API, no API key, no data ever leaves the machine. A local
+LLM (Llama 3.2 3B via [Ollama](https://ollama.com)) is used for two narrow,
+fact-checked, fully-offline jobs — confidence-gated intent reranking and
+reply paraphrasing — never to originate a fact; both are optional and fall
+back safely if Ollama isn't running. See [LLM-assisted
+reranking/paraphrasing](#llm-assisted-reranking-and-paraphrasing) below. No
+new EOS/ERP data tables, no new users, no duplicated business logic — see
+[Architecture](#architecture) for exactly what's reused vs. new (the
+chatbot does own 3 small tables of its own for query logging/analytics,
+see [Learning pipeline](#learning-pipeline)).
 
 ```
 User question
-   → SBERT embedding (all-MiniLM-L6-v2, in-process, offline)
-   → cosine similarity against 2,065 trained examples across 84 intents
+   → SBERT embedding (multilingual MiniLM-L12, in-process, offline)
+   → cosine similarity against 2,533 trained examples across 95 intents
    → best match below confidence threshold? → "I couldn't understand your
      question. Please rephrase it."
+   → (low-confidence only) confidence-gated LLM reranking via local Ollama
    → RBAC check against the intent's allowed roles (from the training
      dataset itself) → not allowed? → "Sorry, you don't have permission
      to access this information."
    → intent handler reads the shared EOS Postgres database (read-only)
+   → reply paraphrased for natural phrasing (fact-verified, local Ollama)
    → conversational reply
 ```
 
