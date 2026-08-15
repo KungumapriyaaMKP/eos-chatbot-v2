@@ -12,7 +12,10 @@
     "train:parse": "tsx src/training/parse-dataset.ts",
     "train:embed": "tsx src/training/build-embeddings.ts",
     "train": "npm run train:parse && npm run train:embed",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "learning:review": "tsx scripts/review-training-candidates.ts",
+    "learning:approve": "tsx scripts/approve-training-candidates.ts",
+    "learning:merge": "tsx scripts/merge-approved-training-examples.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.0",
