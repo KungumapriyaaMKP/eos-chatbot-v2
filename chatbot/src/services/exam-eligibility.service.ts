@@ -1,6 +1,7 @@
 import { prisma } from '../utils/prisma';
 import { resolveTargetStudent, notFoundReply, possessive, NO_LINKED_STUDENT_MESSAGE } from './student-lookup.util';
 import { round2, toDateOnly, endSentence, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
+import { ROLES } from '../config/roles';
 import type { HandlerContext } from '../intent/intent.types';
 
 /**
@@ -75,8 +76,8 @@ export async function getExamEligibility({ user, message }: HandlerContext): Pro
     const worstCase = round2((present / (total + remaining)) * 100);
 
     lines.push(``, `Projected to the end of this semester (~${remaining} estimated class day(s) remaining):`);
-    lines.push(`• If ${user.role === 'student' ? 'you attend' : 'they attend'} every remaining class: up to ${bestCase}%`);
-    lines.push(`• If ${user.role === 'student' ? 'you attend' : 'they attend'} none of them: down to ${worstCase}%`);
+    lines.push(`• If ${user.role === ROLES.STUDENT ? 'you attend' : 'they attend'} every remaining class: up to ${bestCase}%`);
+    lines.push(`• If ${user.role === ROLES.STUDENT ? 'you attend' : 'they attend'} none of them: down to ${worstCase}%`);
 
     if (!isEligibleNow) {
       if (bestCase < ASSUMED_ELIGIBILITY_THRESHOLD) {
