@@ -468,16 +468,26 @@ self-improvement loop:
   fire-and-forget, never blocks the reply).
 - A weekly cron job (`node-cron`, Sunday 2 AM,
   `src/scripts/scheduled-analyzer.ts`) analyzes the last 7 days and
-  auto-inserts candidate new training examples from incorrect/low-confidence
-  queries — **with no admin review gate**, which is worth knowing if you're
-  relying on this for anything beyond manual inspection.
-- **Important limitation:** this pipeline does not close the loop by
-  itself. Nothing automatically feeds `training_examples` back into the
-  `.docx` dataset or `embeddings.json`, and nothing automatically re-runs
-  `npm run train` or restarts the server. Today, turning a candidate
-  example into an actual accuracy improvement is still a manual process —
-  review `training_examples`, hand-add good phrasings via a
-  `rebuild-dataset-vN.ts`-style script, `npm run train`, restart.
+  auto-INSERTS candidate new training examples from incorrect/low-confidence
+  queries — but they land **pending** (`approved_at IS NULL`), never
+  auto-approved. A candidate becomes eligible for real use only after an
+  explicit human review step:
+  1. `npx tsx scripts/review-training-candidates.ts` — lists everything
+     pending, grouped by intent.
+  2. `npx tsx scripts/approve-training-candidates.ts <id> [id ...]` —
+     explicitly approves specific ids after a human has actually judged
+     them (no "approve everything" shortcut, on purpose).
+  3. `npx tsx scripts/merge-approved-training-examples.ts` — pulls every
+     approved candidate into `intents.json`/the `.docx` (same
+     dedupe-and-round-trip-verify discipline as every `rebuild-dataset-vN.ts`).
+  4. `npm run train:embed` + restart the server — still manual, on purpose;
+     nothing re-embeds or restarts automatically.
+
+  This used to auto-approve on insert (self-reported "that was correct"
+  feedback became training data instantly, with zero review) — a real
+  data-poisoning path, since anyone hitting `/chat` + `/learning/feedback`
+  could shape future training just by asserting labels. Fixed; the pending
+  state is now the only path in.
 - `GET /learning/stats` and `POST /learning/feedback` expose this data to
   a caller; see `src/routes/learning.routes.ts`.
 
