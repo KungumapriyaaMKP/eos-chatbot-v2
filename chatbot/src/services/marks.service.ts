@@ -1,7 +1,7 @@
 import { prisma } from '../utils/prisma';
 import { ROLES } from '../config/roles';
 import { resolveTargetStudent, notFoundReply, possessive } from './student-lookup.util';
-import { matchSubjectInMessage } from './subject-match.util';
+import { matchSubjectInMessage, matchExamTypeInMessage } from './subject-match.util';
 import { endSentence, markdownTable, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 
@@ -27,7 +27,10 @@ export async function getMarks({ user, message }: HandlerContext): Promise<ChatR
     return { reply: notFoundReply(user, result, 'their marks', 'get_marks'), intent: 'get_marks', confidence: 1 };
   }
 
-  const subject = await matchSubjectInMessage(message, target.class_id);
+  const [subject, examType] = await Promise.all([
+    matchSubjectInMessage(message, target.class_id),
+    matchExamTypeInMessage(message),
+  ]);
   const publishedOnly = user.role === ROLES.STUDENT || user.role === ROLES.PARENT;
 
   const rows = await prisma.exam_marks.findMany({
@@ -35,8 +38,11 @@ export async function getMarks({ user, message }: HandlerContext): Promise<ChatR
       student_id: target.id,
       exam_subject_mapping: {
         ...(subject && { subject_id: subject.id }),
-        // Students/parents only ever see published results; admin sees everything.
-        ...(publishedOnly && { exams: { status: 'results_published' } }),
+        exams: {
+          ...(examType && { exam_type_id: examType.id }),
+          // Students/parents only ever see published results; admin sees everything.
+          ...(publishedOnly && { status: 'results_published' }),
+        },
       },
     },
     select: {
@@ -52,8 +58,10 @@ export async function getMarks({ user, message }: HandlerContext): Promise<ChatR
     orderBy: { entered_at: 'desc' },
   });
 
+  const scopeParts = [subject?.name, examType?.name].filter((v): v is string => Boolean(v));
+  const scope = scopeParts.length > 0 ? ` for ${scopeParts.join(', ')}` : '';
+
   if (rows.length === 0) {
-    const scope = subject ? ` for ${subject.name}` : '';
     const reply =
       user.role === ROLES.STUDENT
         ? `No published marks${scope} yet.`
@@ -71,7 +79,7 @@ export async function getMarks({ user, message }: HandlerContext): Promise<ChatR
     ]),
   );
 
-  const reply = `${who} marks:\n\n${table}`;
+  const reply = `${who} marks${scope}:\n\n${table}`;
 
   return { reply, intent: 'get_marks', confidence: 1, data: rows };
 }
