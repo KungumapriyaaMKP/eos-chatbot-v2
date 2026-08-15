@@ -67,7 +67,7 @@ async function attendancePerformance(match: { id: number; label: string }): Prom
 }
 
 async function marksPerformance(message: string, match: { id: number; label: string }): Promise<ChatReply> {
-  const [subject, examType] = await Promise.all([matchSubjectInMessage(message), matchExamTypeInMessage(message)]);
+  const [subject, examType] = await Promise.all([matchSubjectInMessage(message, match.id), matchExamTypeInMessage(message)]);
 
   const rows = await prisma.exam_marks.findMany({
     where: {
