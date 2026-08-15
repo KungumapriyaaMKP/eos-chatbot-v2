@@ -6,6 +6,7 @@ import type { JwtPayload } from '../auth/jwt-payload.interface';
 
 export interface ResolvedStudent {
   id: number;
+  user_id: number;
   student_id_no: string;
   class_id: number | null;
   name: string;
@@ -60,6 +61,7 @@ function looksLikeIntentionalId(token: string): boolean {
 
 const STUDENT_SELECT = {
   id: true,
+  user_id: true,
   student_id_no: true,
   roll_no: true,
   register_no: true,
@@ -69,6 +71,7 @@ const STUDENT_SELECT = {
 
 type StudentRow = {
   id: number;
+  user_id: number;
   student_id_no: string;
   roll_no: string | null;
   register_no: string | null;
@@ -86,7 +89,7 @@ function studentName(row: StudentRow): string {
 }
 
 function toResolved(row: StudentRow): ResolvedStudent {
-  return { id: row.id, student_id_no: row.student_id_no, class_id: row.class_id, name: studentName(row) };
+  return { id: row.id, user_id: row.user_id, student_id_no: row.student_id_no, class_id: row.class_id, name: studentName(row) };
 }
 
 async function findByExactId(token: string): Promise<StudentRow | null> {
