@@ -37,7 +37,7 @@ export async function getMentor({ user, message }: HandlerContext): Promise<Chat
     };
   }
 
-  const subject = await matchSubjectInMessage(message);
+  const subject = await matchSubjectInMessage(message, target.class_id);
   if (subject) {
     return getSubjectFaculty(user, target, subject);
   }
