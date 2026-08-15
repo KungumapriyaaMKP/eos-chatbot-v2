@@ -1,6 +1,7 @@
 import { prisma } from '../utils/prisma';
 import { markdownTable, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
+import { logger } from '../utils/logger';
 
 /**
  * Get faculty members who teach a specific subject
@@ -94,6 +95,7 @@ Email: ${f.users?.email || 'Not available'}`;
     const reply = `**${uniqueFaculty.length} faculty members** teach **${subject.name}**:\n\n${table}`;
     return { reply, intent: 'get_faculty_by_subject', confidence: 1 };
   } catch (error) {
+    logger.error('faculty-by-subject', `getFacultyBySubject failed for user ${user.sub}: ${error}`);
     return {
       reply: 'I encountered an error looking up the faculty. Please try again.',
       intent: 'get_faculty_by_subject',
