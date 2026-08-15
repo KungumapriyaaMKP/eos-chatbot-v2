@@ -16,3 +16,26 @@ intents.json
 node_modules/
 *.log
 .DS_Store
+
+# Scratch/working artifacts from classifier accuracy-audit runs — regenerate
+# via `npx tsx scripts/generate-1000-questions.ts` / `audit-with-margin.ts`,
+# never hand-authored, not needed for a fresh clone to build or run.
+_failures_dump.txt
+_holdout_margin_rows.json
+
+# Local backup snapshot taken before a model/embeddings change — personal
+# rollback safety net, not a build artifact or source file.
+backup-baseline-minilm/
+
+# Superseded local model cache: the in-process paraphraser
+# (Xenova/LaMini-Flan-T5-248M) was replaced by an Ollama-based paraphraser
+# (see chatbot/src/reply/paraphraser.ts) — this ~265MB cache is dead weight.
+chatbot/.transformers-cache/Xenova/LaMini-Flan-T5-248M/
+
+# The active SBERT classifier model (Xenova/paraphrase-multilingual-MiniLM-L12-v2)
+# is normally committed for offline-first setup (see chatbot/.gitignore), but
+# its quantized ONNX weights are ~118MB — over GitHub's 100MB hard file-size
+# limit, so a plain `git push` would be rejected outright. Excluded here;
+# `@xenova/transformers` auto-downloads it from the HF hub on first run
+# instead. If fully offline/air-gapped setup is required, use Git LFS.
+chatbot/.transformers-cache/Xenova/paraphrase-multilingual-MiniLM-L12-v2/
