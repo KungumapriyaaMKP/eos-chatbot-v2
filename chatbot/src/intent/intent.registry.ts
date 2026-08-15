@@ -7,6 +7,7 @@ import { getFees } from '../services/fees.service';
 import { getExamSchedule } from '../services/exam-schedule.service';
 import { getAnnouncements } from '../services/announcements.service';
 import { getSubjects } from '../services/subjects.service';
+import { getAssignments } from '../services/assignments.service';
 import { getMentor } from '../services/mentor.service';
 import { getHolidays } from '../services/holidays.service';
 import { getLibraryHours } from '../services/library.service';
@@ -31,9 +32,21 @@ import { getFacultyMentees, getFacultyPayslip, getFacultyInvigilation, getFacult
 import { getAdminFeeCollection, getAdminOverdueBooks, getAdminPendingApprovals, getAdminStudentsOutNow, getAdminHostelOccupancy, getAdminMarksEntryStatus } from '../services/admin-analytics.service';
 import { getMyProjects, getProjectJoinRequests } from '../services/student-projects.service';
 import { getStudentCertificates } from '../services/certificates.service';
-import { getWalletBalance, rechargeWallet } from '../services/wallet.service';
-import { submitFeedbackForm, getActiveSurveys } from '../services/feedback.service';
+import { getWalletBalance } from '../services/wallet.service';
+import { getActiveSurveys } from '../services/feedback.service';
 import { searchAlumniNetwork, getResultPublicationStatus, viewDepartmentAchievements } from '../services/alumni.service';
+import { getCompanyInfo, getProfileLinks } from '../services/placement.service';
+import { getEResources } from '../services/library.service';
+import { getFacultyMediaRequest } from '../services/faculty-extended.service';
+import {
+  getAdminAdmissionStatus,
+  getAdminDDLookup,
+  getAdminDrivePipeline,
+  getAdminGateLog,
+  getAdminPOStatus,
+  getAdminVenueAvailability,
+  getAdminVisitorLog,
+} from '../services/admin-extended.service';
 import {
   greeting,
   help,
@@ -88,6 +101,7 @@ export const INTENT_HANDLERS: Record<string, IntentHandler> = {
   get_revaluation_status: getRevaluationStatus,
   get_announcements: getAnnouncements,
   get_my_subjects: getSubjects,
+  get_assignments: getAssignments,
   get_mentor: getMentor,
   get_holidays: getHolidays,
   library_hours: getLibraryHours,
@@ -112,12 +126,18 @@ export const INTENT_HANDLERS: Record<string, IntentHandler> = {
   project_join_requests_status: getProjectJoinRequests,
   get_student_certificates: getStudentCertificates,
   get_wallet_balance: getWalletBalance,
-  wallet_recharge: rechargeWallet,
-  submit_feedback_form: submitFeedbackForm,
+  // Real actions (payment, form submission), not queries — honest redirect
+  // like password_reset/general_facilities/admissions_info, not a fabricated
+  // "processed successfully" reply this bot can never actually back up.
+  wallet_recharge: redirectRequest,
+  submit_feedback_form: redirectRequest,
   get_active_surveys: getActiveSurveys,
   alumni_network_search: searchAlumniNetwork,
   get_result_publication_status: getResultPublicationStatus,
   view_department_achievements: viewDepartmentAchievements,
+  get_company_info: getCompanyInfo,
+  get_e_resources: getEResources,
+  get_profile_links: getProfileLinks,
 
   // Faculty
   faculty_my_classes: getFacultyClasses,
@@ -131,6 +151,7 @@ export const INTENT_HANDLERS: Record<string, IntentHandler> = {
   faculty_invigilation: getFacultyInvigilation,
   faculty_appraisal: getFacultyAppraisal,
   faculty_low_attendance: getFacultyLowAttendance,
+  faculty_media_request: getFacultyMediaRequest,
 
   // Admin
   admin_list_students: adminListStudents,
@@ -142,6 +163,13 @@ export const INTENT_HANDLERS: Record<string, IntentHandler> = {
   admin_students_out_now: getAdminStudentsOutNow,
   admin_hostel_occupancy: getAdminHostelOccupancy,
   admin_marks_entry_status: getAdminMarksEntryStatus,
+  admin_admission_status: getAdminAdmissionStatus,
+  admin_dd_lookup: getAdminDDLookup,
+  admin_drive_pipeline: getAdminDrivePipeline,
+  admin_gate_log: getAdminGateLog,
+  admin_po_status: getAdminPOStatus,
+  admin_venue_availability: getAdminVenueAvailability,
+  admin_visitor_log: getAdminVisitorLog,
 
   // Utility (no DB access)
   greeting,
