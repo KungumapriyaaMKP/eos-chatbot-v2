@@ -107,8 +107,19 @@ const NO_SIGNAL_MESSAGES = [
 
 const NEAR_MISS_THRESHOLD = 0.35;
 
-/** Picks a fallback reply for an unmatched message, varying tone by how close the classifier actually got. */
-export function pickLowConfidenceMessage(confidence: number): string {
+/**
+ * Picks a fallback reply for an unmatched message, varying tone by how
+ * close the classifier actually got. `suggestion`, when given, is appended
+ * as a concrete "try asking about X instead" pointer — every OTHER "I can't
+ * help with that" reply in this codebase (help(), notWiredUp(), the OOS_*
+ * redirects in utility.service.ts) already points the caller somewhere
+ * real instead of just admitting confusion; this was the one fallback path
+ * that didn't, purely because building the suggestion needs the caller's
+ * role (via getAllIntents()/WIRED_INTENT_LABELS, see chat.controller.ts),
+ * which this formatting-only module deliberately has no reason to import.
+ */
+export function pickLowConfidenceMessage(confidence: number, suggestion?: string): string {
   const pool = confidence >= NEAR_MISS_THRESHOLD ? NEAR_MISS_MESSAGES : NO_SIGNAL_MESSAGES;
-  return pool[Math.floor(Math.random() * pool.length)];
+  const base = pool[Math.floor(Math.random() * pool.length)];
+  return suggestion ? `${base} ${suggestion}` : base;
 }
