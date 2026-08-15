@@ -24,7 +24,7 @@ const OUT_PATH = path.join(__dirname, '..', '..', 'chatbot-1000-question-test-re
 // phrasings — never lifted from the docx dataset — chosen to be realistic
 // for that intent's actual role(s) and, where this session found a real
 // collision risk, deliberately probing that exact boundary again.
-const BASE_QUESTIONS: Record<string, string[]> = {
+export const BASE_QUESTIONS: Record<string, string[]> = {
   get_marks: ['what did I score in my last internal', 'show me my exam results', 'how many marks did I get in maths'],
   get_attendance: ['how many classes have I missed this month', "what's my attendance percentage right now", 'am I short of attendance in any subject'],
   get_fees: ['do I owe any money to the college', 'has my tuition fee been cleared', 'what is my pending balance'],
@@ -115,7 +115,7 @@ const BASE_QUESTIONS: Record<string, string[]> = {
 // Deterministic variation wrappers — no Math.random() (would break
 // reproducibility), just cycle through a fixed set of transforms indexed
 // by position within each intent's base-question list.
-const WRAPPERS: Array<(s: string) => string> = [
+export const WRAPPERS: Array<(s: string) => string> = [
   (s) => s,
   (s) => `pls ${s}`,
   (s) => `${s}?`,
@@ -126,7 +126,7 @@ const WRAPPERS: Array<(s: string) => string> = [
   (s) => `kindly let me know ${s}`,
 ];
 
-function expand(base: string[], perBase: number): string[] {
+export function expand(base: string[], perBase: number): string[] {
   const out: string[] = [];
   base.forEach((q, i) => {
     for (let v = 0; v < perBase; v++) {
