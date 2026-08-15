@@ -1754,11 +1754,13 @@ model alumni_members {
 
 model student_wallets {
   id                  Int                   @id @default(autoincrement())
-  student_id          Int                   @unique
+  student_id          Int                   @unique @map("user_id")
   balance             Decimal               @default(0) @db.Decimal(12, 2)
   updated_at          DateTime              @default(now()) @db.Timestamptz(6)
-  students            students              @relation(fields: [student_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  students            students              @relation(fields: [student_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
   wallet_transactions wallet_transactions[]
+
+  @@map("wallets")
 }
 
 model wallet_outlets {
