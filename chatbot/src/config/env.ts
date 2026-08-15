@@ -17,6 +17,13 @@ export const env = {
   jwt: {
     // Deliberately its own secret, independent of the EOS-backend's
     // JWT_SECRET — see src/auth/README.md for why.
+    //
+    // The 'CHANGE_ME_IN_PRODUCTION' fallback is a REAL, publicly-known
+    // string (documented in this very repo) — if a deployer forgets to set
+    // CHATBOT_JWT_SECRET, anyone who knows that string can forge a valid
+    // token for ANY user/role. bootstrap.ts refuses to start in production
+    // with this default (see server.ts); every other environment gets a
+    // loud warning instead, since dev/test convenience still matters there.
     secret: process.env.CHATBOT_JWT_SECRET || 'CHANGE_ME_IN_PRODUCTION',
     expiresIn: process.env.CHATBOT_JWT_EXPIRES_IN || '8h',
   },
