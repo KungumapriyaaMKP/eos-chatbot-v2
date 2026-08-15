@@ -11,37 +11,63 @@ requirements.txt.
 ----------
 - Node.js  v20+ (developed/tested on v24.11.1)
 - npm      (ships with Node)
-- No Python, no GPU, no external AI service/API key — the intent
-  classifier (SBERT via @xenova/transformers) runs fully offline in-process
-  as an ONNX model.
+- No Python, no GPU required.
+- No external AI *API* — but there IS a local AI *service* dependency now,
+  see section 2. The intent classifier itself (SBERT via
+  @xenova/transformers) still runs fully offline in-process as an ONNX
+  model, with no service to install for that part.
 
 2. External services
 ---------------------
 - PostgreSQL — the SAME database EOS-backend already uses (Supabase or
   local copy). This app only ever runs read queries against it; it never
-  runs migrations and never writes to it. No separate database needed.
-- No internet access needed for the SBERT model — the ONNX weights
-  (~23MB quantized) are committed straight into the repo under
-  `.transformers-cache/`, specifically so this works on networks that
-  block the Hugging Face hub. If that folder is ever deleted, it will
-  auto re-download from Hugging Face on the next run instead (needs
-  internet just that once).
+  runs migrations. Exceptions: 3 chatbot-owned tables it DOES write to —
+  query_logs, training_examples, model_performance (the learning/analytics
+  pipeline) — must exist in that same database (plain CREATE TABLE, no
+  migration framework used; see git history for the DDL if they're
+  missing).
+
+- Ollama (NEW — a real, separate local system service, not optional
+  boilerplate) — https://ollama.com. Used for two things, both of which
+  degrade gracefully (silently skipped, never a crash) if Ollama isn't
+  running:
+    * LLM-based intent reranking (only for low-confidence SBERT calls)
+    * Rewording an already-correct reply for more natural phrasing
+  Setup:
+    ollama pull llama3.2:3b
+  Default endpoint: http://localhost:11434 (override via OLLAMA_HOST).
+  Model name is configurable via OLLAMA_MODEL, default llama3.2:3b.
+  Needs internet ONCE to pull the model (~2GB download); fully offline
+  after that.
+
+- SBERT model weights (Xenova/paraphrase-multilingual-MiniLM-L12-v2,
+  ~118MB quantized ONNX). Normally auto-cached under .transformers-cache/
+  on first run. NOTE: this specific model's weights are OVER GitHub's
+  100MB per-file limit, so they are NOT committed to this repo (unlike the
+  originally-committed, smaller all-MiniLM-L6-v2 model) — expect ONE
+  internet-connected first run to download from the Hugging Face hub, then
+  fully offline after that. If your network blocks the HF hub outright,
+  copy a pre-downloaded .transformers-cache/Xenova/paraphrase-multilingual-MiniLM-L12-v2/
+  folder from another machine, or use Git LFS.
 
 3. npm dependencies (see package.json for the authoritative, versioned list)
 ------------------------------------------------------------------------------
 Runtime (`dependencies`):
   @prisma/adapter-pg     ^7.9.0   — Postgres driver adapter for Prisma
   @prisma/client         ^7.9.0   — Prisma ORM client (reads EOS-backend's schema)
-  @xenova/transformers   ^2.17.2  — offline SBERT (all-MiniLM-L6-v2) intent classifier
+  @xenova/transformers   ^2.17.2  — offline SBERT (multilingual MiniLM-L12) intent classifier
   cors                   ^2.8.5
   dotenv                 ^17.4.2
   express                ^4.21.2
   jsonwebtoken           ^9.0.3   — signs/verifies the chatbot's own temporary JWT
+  node-cron              ^4.6.0   — weekly query-log analysis scheduler (learning pipeline)
   pg                     ^8.22.0
 
 Development (`devDependencies`):
-  @types/cors, @types/express, @types/jsonwebtoken, @types/node
+  @types/cors, @types/express, @types/jsonwebtoken, @types/node,
+  @types/node-cron, @types/pdfkit
   jszip           ^3.10.1  — reads/writes the .docx training dataset
+  pdfkit          ^0.19.1  — generates the 1000-question accuracy test-report PDF
   prisma          ^7.9.0   — Prisma CLI (schema generation)
   tsx             ^4.23.1  — TypeScript runner (dev server, scripts)
   typescript      ^5.7.3
@@ -51,20 +77,33 @@ Install everything with:
 
 4. Environment variables (copy .env.example to .env and fill in)
 ------------------------------------------------------------------
-  PORT                        — server port (default 4000)
-  NODE_ENV                    — development | production
-  DATABASE_URL                — MUST be the exact same value as
-                                 EOS-backend/.env's DATABASE_URL (same DB).
-                                 Prefer the transaction-mode pooler port
-                                 (:6543) over session-mode (:5432) — see
-                                 README.md for why.
-  CHATBOT_JWT_SECRET          — any long random string; independent of the
-                                 backend's own JWT_SECRET (temporary
-                                 standalone-testing auth — see
-                                 src/auth/README.md)
-  CHATBOT_JWT_EXPIRES_IN      — e.g. "8h"
-  INTENT_CONFIDENCE_THRESHOLD — 0-1, default 0.55
-  ALLOWED_ORIGINS             — comma-separated CORS allow-list
+  PORT                          — server port (default 4000)
+  NODE_ENV                      — development | production
+  DATABASE_URL                  — MUST be the exact same value as
+                                   EOS-backend/.env's DATABASE_URL (same DB).
+                                   Prefer the transaction-mode pooler port
+                                   (:6543) over session-mode (:5432) — see
+                                   README.md for why.
+  CHATBOT_JWT_SECRET            — any long random string; independent of the
+                                   backend's own JWT_SECRET (temporary
+                                   standalone-testing auth — see
+                                   src/auth/README.md)
+  CHATBOT_JWT_EXPIRES_IN        — e.g. "8h"
+  INTENT_CONFIDENCE_THRESHOLD   — 0-1, default 0.55. Minimum cosine score
+                                   to accept a classification.
+  INTENT_AMBIGUITY_MARGIN       — 0-1, default 0 (disabled — measured to
+                                   REDUCE real accuracy, see env.ts).
+  INTENT_LLM_RERANK_ENABLED     — true|false, default true. Toggles the
+                                   Ollama reranker.
+  INTENT_LLM_RERANK_CEILING     — 0-1, default 0.72. Reranker only runs
+                                   when SBERT's own confidence is below this.
+  INTENT_LLM_RERANK_TOP_K       — integer, default 4. Candidates handed to
+                                   the reranker.
+  REPLY_PARAPHRASE_ENABLED      — true|false, default true. Toggles Ollama
+                                   reply rewording.
+  OLLAMA_HOST                   — default http://localhost:11434
+  OLLAMA_MODEL                  — default llama3.2:3b
+  ALLOWED_ORIGINS               — comma-separated CORS allow-list
 
 5. One-time setup, in order
 -----------------------------
@@ -74,7 +113,20 @@ Install everything with:
   npm run train                 # parses the training dataset .docx (must
                                  # sit one directory above this folder) and
                                  # builds SBERT embeddings — downloads the
-                                 # model weights on first run
+                                 # model weights on first run (~118MB)
+  ollama pull llama3.2:3b       # optional but recommended — enables
+                                 # reranking + reply paraphrasing; app runs
+                                 # fine without it, just less polished
   npm run dev                   # starts the dev server on $PORT
+
+6. Current scale (informational — regenerate via the tools below, don't
+   hand-edit these numbers)
+-------------------------------------------------------------------------
+  Intents trained:            95
+  Training examples:          2,533
+  Held-out accuracy:          86.1% (878/1,020), see
+                               chatbot-1000-question-test-report.pdf —
+                               regenerate with:
+                               npx tsx scripts/generate-1000-questions.ts
 
 Full setup, architecture, and API details: README.md.
