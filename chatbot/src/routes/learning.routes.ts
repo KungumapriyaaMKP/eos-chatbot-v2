@@ -3,6 +3,7 @@ import { verifyJwt } from '../middleware/verifyJwt.middleware';
 import { recordFeedback, getQueryStats } from '../services/learning/query-logger.service';
 import { analyzeAndPrepareRetrainingData, getModelPerformanceHistory } from '../services/learning/model-analyzer.service';
 import { logger } from '../utils/logger';
+import { ROLES } from '../config/roles';
 
 export const learningRouter = Router();
 
@@ -68,7 +69,7 @@ learningRouter.get('/performance-history', verifyJwt, async (req, res) => {
 learningRouter.post('/analyze', verifyJwt, async (req, res) => {
     try {
       // Check if user is admin
-      if (req.user!.role !== 'admin') {
+      if (req.user!.role !== ROLES.ADMIN) {
         return res.status(403).json({ error: 'Admin access required' });
       }
 
