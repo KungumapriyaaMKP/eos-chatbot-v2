@@ -3,10 +3,11 @@
  * strings must stay identical to the `roles.name` column values in the
  * shared database. The chatbot never invents its own role vocabulary.
  *
- * The intent training dataset only ever assigns intents to student /
- * faculty / admin, so those are the three roles the chatbot's RBAC map
- * actually references — but every backend role is listed here so a
- * default-deny check against "unknown role" is never ambiguous.
+ * The intent training dataset currently assigns intents to 6 of these
+ * roles (student, faculty, admin, hod, coe, parent — confirmed against the
+ * live intents.json, not just this comment's word) — every backend role is
+ * still listed here regardless, so a default-deny check against "unknown
+ * role" is never ambiguous even for a role the dataset hasn't used yet.
  */
 export const ROLES = {
   ADMIN: 'admin',
@@ -29,10 +30,3 @@ export const ROLES = {
 } as const;
 
 export type RoleKey = (typeof ROLES)[keyof typeof ROLES];
-
-/** The three roles the intent dataset was authored against. */
-export const DATASET_ROLE_MAP: Record<string, RoleKey> = {
-  student: ROLES.STUDENT,
-  faculty: ROLES.FACULTY,
-  admin: ROLES.ADMIN,
-};
