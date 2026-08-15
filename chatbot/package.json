@@ -2,7 +2,7 @@
   "name": "eos-chatbot",
   "version": "1.0.0",
   "private": true,
-  "description": "SBERT-based ERP chatbot backend for EOS. Reuses the existing EOS-backend database, Prisma models and business rules — no new tables, no LLM, fully offline intent detection.",
+  "description": "SBERT-based ERP chatbot backend for EOS. Reuses the existing EOS-backend database, Prisma models and business rules — fully offline intent detection, plus a local Ollama LLM for confidence-gated reranking and reply paraphrasing (never fact-generation). 3 chatbot-owned tables back a query-logging/learning pipeline.",
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
