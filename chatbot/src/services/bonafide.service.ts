@@ -1,23 +1,47 @@
 import { prisma } from '../utils/prisma';
-import { type ChatReply } from '../utils/response';
+import { resolveTargetStudent, notFoundReply, possessive } from './student-lookup.util';
+import { toDateOnly, endSentence, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 
-export async function getBonafideStatus({ user }: HandlerContext): Promise<ChatReply> {
-  try {
-    const student = await prisma.students.findUnique({
-      where: { user_id: user.sub },
-    });
-
-    if (!student) {
-      return { reply: "You don't have a student profile.", intent: 'get_bonafide_status', confidence: 1 };
-    }
-
-    return {
-      reply: `**Bonafide Certificate**\n\nYou can download your bonafide certificate from the student portal or visit the office during working hours.`,
-      intent: 'get_bonafide_status',
-      confidence: 1,
-    };
-  } catch (error) {
-    return { reply: 'Unable to fetch bonafide status.', intent: 'get_bonafide_status', confidence: 1 };
+function formatStatus(status: string): string {
+  switch (status) {
+    case 'issued':
+      return 'Issued';
+    case 'rejected':
+      return 'Rejected';
+    default:
+      return 'Pending';
   }
+}
+
+/** get_bonafide_status — student (own) / admin (any student, looked up). Real bonafide_requests rows. */
+export async function getBonafideStatus({ user, message }: HandlerContext): Promise<ChatReply> {
+  const result = await resolveTargetStudent(user, message);
+  const { student: target, forbidden } = result;
+
+  if (forbidden) {
+    return { reply: NO_PERMISSION_MESSAGE, intent: 'get_bonafide_status', confidence: 1 };
+  }
+  if (!target) {
+    return { reply: notFoundReply(user, result, 'their bonafide certificate status', 'get_bonafide_status'), intent: 'get_bonafide_status', confidence: 1 };
+  }
+
+  const requests = await prisma.bonafide_requests.findMany({
+    where: { student_id: target.id },
+    orderBy: { requested_at: 'desc' },
+    select: { status: true, requested_at: true, issued_at: true, bonafide_reasons: { select: { reason_text: true } } },
+  });
+
+  const who = possessive(user, target);
+
+  if (requests.length === 0) {
+    return { reply: `${who} hasn't requested a bonafide certificate.`, intent: 'get_bonafide_status', confidence: 1 };
+  }
+
+  const latest = requests[0];
+  const reply =
+    `${who} most recent bonafide request (${latest.bonafide_reasons.reason_text}), requested ${toDateOnly(latest.requested_at)}: ${formatStatus(latest.status)}` +
+    (latest.status === 'issued' && latest.issued_at ? `, issued ${toDateOnly(latest.issued_at)}.` : '.');
+
+  return { reply: endSentence(reply), intent: 'get_bonafide_status', confidence: 1, data: requests };
 }
