@@ -75,5 +75,40 @@ export function markdownTable(headers: string[], rows: Array<Array<string | numb
 export const NO_PERMISSION_MESSAGE =
   "Sorry, you don't have permission to access this information.";
 
-export const LOW_CONFIDENCE_MESSAGE =
-  "I couldn't understand your question. Please rephrase it.";
+/**
+ * Reply templates for when classifyIntent() abstains (see
+ * intent.classifier.ts — below-threshold OR ambiguous-margin). Previously a
+ * single fixed string ("I couldn't understand your question. Please
+ * rephrase it.") for every single unmatched message, regardless of how
+ * close the classifier actually got or what was asked — reads as robotic
+ * and gives the user no signal on whether to try a totally different
+ * question or just reword the same one.
+ *
+ * Two tiers, split at the intent confidence threshold's midpoint-ish (0.35
+ * — well below env.intent.confidenceThreshold's default 0.55): "near miss"
+ * (the classifier landed somewhere plausible but not confidently enough)
+ * gets a tone that invites rewording; "no signal" (score near zero, or no
+ * candidate at all) gets a tone that doesn't pretend to have understood
+ * anything. Within each tier, picks pseudo-randomly for variety — a chat
+ * that says the exact same sentence every time it's confused reads worse
+ * than one that varies, even though the underlying capability is identical.
+ */
+const NEAR_MISS_MESSAGES = [
+  "I think I get the general idea, but I'm not confident enough to answer correctly — could you rephrase or add a bit more detail?",
+  "That's close to something I understand, but not quite — mind wording it a little differently?",
+  "I'm partly following, but not sure enough to give you a reliable answer. Could you be more specific?",
+];
+
+const NO_SIGNAL_MESSAGES = [
+  "Hmm, I'm not sure what you're asking — could you rephrase that?",
+  "Sorry, I didn't quite catch what you need there. Could you try asking it a different way?",
+  "That one's unclear to me. Could you reword it?",
+];
+
+const NEAR_MISS_THRESHOLD = 0.35;
+
+/** Picks a fallback reply for an unmatched message, varying tone by how close the classifier actually got. */
+export function pickLowConfidenceMessage(confidence: number): string {
+  const pool = confidence >= NEAR_MISS_THRESHOLD ? NEAR_MISS_MESSAGES : NO_SIGNAL_MESSAGES;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
