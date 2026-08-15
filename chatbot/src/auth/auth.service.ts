@@ -1,5 +1,5 @@
 import { prisma } from '../utils/prisma';
-import { hashPassword } from '../utils/password';
+import { verifyPassword } from '../utils/password';
 import { signChatbotToken } from './jwt.util';
 import { AppError } from '../utils/http-error';
 import { logger } from '../utils/logger';
@@ -51,7 +51,7 @@ export async function login(email: string, password: string): Promise<LoginResul
     throw AppError.forbidden('Account is inactive. Contact administrator.', 'ACCOUNT_INACTIVE');
   }
 
-  if (hashPassword(password) !== user.password_hash) {
+  if (!verifyPassword(password, user.password_hash)) {
     throw AppError.unauthorized('Invalid email or password', 'INVALID_CREDENTIALS');
   }
 
