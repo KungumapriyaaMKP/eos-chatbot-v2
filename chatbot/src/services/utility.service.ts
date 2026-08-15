@@ -122,6 +122,8 @@ const REDIRECT_REPLIES: Record<string, string> = {
   password_reset: "I can't reset passwords myself, for security reasons. Please contact IT support or your administrator to reset it.",
   general_facilities: "I don't have campus facility locations in these records. Please check the campus signage, website, or ask at the admin office.",
   admissions_info: 'For admissions procedures, required documents, and deadlines, please check the official admissions page or contact the admissions office. I can only answer questions about your own enrolled records.',
+  wallet_recharge: "I can't process a wallet recharge myself — that's a real payment, not something I can query. Please use the campus payment portal to recharge your wallet.",
+  submit_feedback_form: "I can't submit a feedback form on your behalf — please use the feedback/survey portal directly. I can tell you which surveys are still awaiting your response, though.",
 };
 
 export async function redirectRequest({ match }: HandlerContext): Promise<ChatReply> {
