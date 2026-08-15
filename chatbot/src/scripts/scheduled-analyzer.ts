@@ -15,7 +15,11 @@ export function startScheduledAnalysis() {
         );
 
         if (result.retrain_triggered) {
-          logger.log('scheduler', '⚡ Retraining triggered! Run: npm run train');
+          // NOT an actual retrain — candidates land pending (approved_at =
+          // null), see model-analyzer.service.ts's review-gate note. This
+          // just flags that enough new PENDING candidates piled up to be
+          // worth a human's time reviewing.
+          logger.log('scheduler', '⚡ New training candidates ready for review — run: npx tsx scripts/review-training-candidates.ts');
         }
       } catch (error) {
         logger.error('scheduler', `Analysis failed: ${error}`);
