@@ -1,7 +1,6 @@
 import { prisma } from '../utils/prisma';
 import { resolveTargetClass } from './class-match.util';
-import { matchSubjectInMessage } from './subject-match.util';
-import { fuzzyFindBest } from '../utils/fuzzy';
+import { matchSubjectInMessage, matchExamTypeInMessage } from './subject-match.util';
 import { round2, joinNaturally, markdownTable, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 
@@ -16,11 +15,6 @@ const ASSUMED_PASS_PERCENT = 40;
 
 const ATTENDANCE_PATTERN = /\battend/i;
 const FAILED_PATTERN = /\bfail(ed|ure)?\b/i;
-
-async function matchExamTypeInMessage(message: string): Promise<{ id: number; name: string } | null> {
-  const examTypes = await prisma.exam_types.findMany({ select: { id: true, name: true } });
-  return fuzzyFindBest(message, examTypes, (e) => ({ name: e.name }));
-}
 
 /**
  * section_performance — faculty (own assigned/mentored classes) / admin

@@ -103,3 +103,20 @@ export async function matchSubjectInMessage(message: string, classId?: number | 
 
   return fuzzyFindBest(message, subjects, (s) => ({ codes: [s.subject_code], name: s.name }));
 }
+
+export interface MatchedExamType {
+  id: number;
+  name: string;
+}
+
+/**
+ * Best-effort "did the user ask about a specific exam" check — e.g. "marks
+ * in the last internal" or "semester exam results" — moved here (from
+ * section-performance.service.ts, the only prior caller) so get_marks can
+ * reuse it too instead of always dumping the caller's entire mark history
+ * regardless of which single exam they actually asked about.
+ */
+export async function matchExamTypeInMessage(message: string): Promise<MatchedExamType | null> {
+  const examTypes = await prisma.exam_types.findMany({ select: { id: true, name: true } });
+  return fuzzyFindBest(message, examTypes, (e) => ({ name: e.name }));
+}
