@@ -564,6 +564,14 @@ fail with a normal `500 INTERNAL_ERROR` instead, logged with the real
 Prisma error. This was verified during development; see git history / PR
 description for the exact request/response pairs exercised.
 
+**Rate limiting note:** `e2e-role-rbac-test.ts` fires many rapid requests
+per role, both per-IP (all simulated roles hit the same localhost IP) and
+per-user (many messages to the same logged-in account in a row) — see
+[Setup](#setup) for `RATE_LIMIT_PER_IP_PER_MINUTE` /
+`RATE_LIMIT_PER_USER_PER_MINUTE`. If a real test run starts seeing 429s
+that look like RBAC failures, bump those env vars for the duration of the
+run rather than treating it as a regression.
+
 ## Removing the temporary login
 
 See [`src/auth/README.md`](src/auth/README.md) — it's a self-contained
