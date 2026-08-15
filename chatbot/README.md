@@ -314,7 +314,14 @@ Denied and low-confidence cases still return `200` with a conversational
 
 ## Intent coverage
 
-The classifier is trained on **84 intents / 2,065 examples** — the
+The classifier is trained on **95 intents / 2,533 examples** as of the
+latest dataset pass (`scripts/rebuild-dataset-v4.ts`) — held-out accuracy on
+a freshly-composed 1,000-question benchmark is **86.1% (878/1,020)**, up
+from a 70.8% baseline; see `chatbot-1000-question-test-report.pdf` for the
+current per-intent breakdown, and regenerate anytime after a dataset change
+with `npx tsx scripts/generate-1000-questions.ts`.
+
+History below is kept for context on how the dataset got here — the
 original 80-intent dataset plus a second pass (`scripts/augment-dataset-2.ts`)
 that merged in a user-supplied generic pattern sheet: phrasings that
 duplicated existing intents were added as more training examples, and four
