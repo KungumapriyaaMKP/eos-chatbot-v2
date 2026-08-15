@@ -7,8 +7,15 @@ src/embeddings/*.json
 *.log
 .DS_Store
 
-# .transformers-cache/ (the ~23MB SBERT ONNX model weights) is deliberately
-# COMMITTED, not ignored — some dev/college networks block the Hugging Face
-# hub, which otherwise silently breaks the model's first-run auto-download.
-# Committing it means a fresh clone works fully offline from the start, no
-# internet needed even once. See README "Fully offline / air-gapped setup".
+# .transformers-cache/ is deliberately COMMITTED where practical, not
+# ignored — some dev/college networks block the Hugging Face hub, which
+# otherwise silently breaks a model's first-run auto-download. Committing it
+# means a fresh clone works fully offline from the start, no internet needed
+# even once. See README "Fully offline / air-gapped setup".
+#
+# EXCEPTION: the current classifier model
+# (Xenova/paraphrase-multilingual-MiniLM-L12-v2)'s quantized ONNX weights are
+# ~118MB — over GitHub's 100MB hard per-file limit — so THAT specific model
+# is excluded via the root .gitignore instead and falls back to the normal
+# HF-hub auto-download on first run. The original, smaller classifier model
+# (Xenova/all-MiniLM-L6-v2, ~23MB) stays committed below.
