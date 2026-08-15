@@ -2,6 +2,7 @@ import { createApp } from './app';
 import { env } from './config/env';
 import { logger } from './utils/logger';
 import { warmUpIntentClassifier } from './intent/intent.classifier';
+import { warmUpParaphraser } from './reply/paraphraser';
 import { prisma } from './utils/prisma';
 import { startScheduledAnalysis } from './scripts/scheduled-analyzer';
 
@@ -10,6 +11,17 @@ async function bootstrap() {
   // first real /chat request isn't slow. Fails fast with a clear message if
   // `npm run train` hasn't been run yet.
   await warmUpIntentClassifier();
+
+  // Best-effort only — unlike the classifier above, the paraphraser is
+  // optional polish (see src/reply/paraphraser.ts): every reply already
+  // works correctly without it. A failed download/load here (no network,
+  // first-run not done yet) should never block the chatbot from starting;
+  // paraphraseReply() falls back to the untouched original on any error
+  // regardless, so a cold model just means slightly more template-y
+  // replies until it's warmed up, not a broken deploy.
+  warmUpParaphraser().catch((err) => {
+    logger.warn('bootstrap', `Reply paraphraser failed to warm up (replies still work, just un-reworded): ${(err as Error).message}`);
+  });
 
   // Deliberately NOT an eager await prisma.$connect() here — Prisma connects
   // lazily on first query. That means /health, utility intents (greeting,
