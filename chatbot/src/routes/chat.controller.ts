@@ -2,12 +2,12 @@ import type { Request, Response, NextFunction } from 'express';
 import { classifyIntent, getIntentDefinition } from '../intent/intent.classifier';
 import { INTENT_HANDLERS } from '../intent/intent.registry';
 import { isRoleAllowedForIntent } from '../middleware/rbac.middleware';
-import { notWiredUp } from '../services/utility.service';
+import { notWiredUp, suggestedTopicsFor } from '../services/utility.service';
 import { getSessionContext } from '../intent/session-context';
 import { SIBLING_INTENTS } from '../intent/sibling-intents';
 import { AppError } from '../utils/http-error';
 import { logger } from '../utils/logger';
-import { pickLowConfidenceMessage, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
+import { pickLowConfidenceMessage, joinNaturally, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
 import { paraphraseReply } from '../reply/paraphraser';
 import type { HandlerContext, IntentMatch } from '../intent/intent.types';
 import { logQuery } from '../services/learning/query-logger.service';
@@ -55,7 +55,20 @@ export async function chatHandler(req: Request, res: Response, next: NextFunctio
           module: pendingDefinition.module,
         } satisfies IntentMatch;
       } else {
-        const reply: ChatReply = { reply: pickLowConfidenceMessage(match.confidence), intent: null, confidence: match.confidence };
+        // Genuinely failed classification (not even recognized as
+        // out-of-scope) — every OTHER "can't help with that" reply in this
+        // codebase (help(), notWiredUp(), the OOS_* redirects) points the
+        // caller somewhere real; this fallback was the one that just said
+        // "rephrase?" with no suggestion. Same suggestedTopicsFor(role)
+        // used by help()/notWiredUp(), so it never drifts out of sync with
+        // what's actually wired up for this caller.
+        const topics = suggestedTopicsFor(user.role);
+        const suggestion = topics.length > 0 ? `You could try asking about ${joinNaturally(topics)}.` : undefined;
+        const reply: ChatReply = {
+          reply: pickLowConfidenceMessage(match.confidence, suggestion),
+          intent: null,
+          confidence: match.confidence,
+        };
         res.status(200).json(reply);
         return;
       }
