@@ -7,12 +7,18 @@ import { env } from '../config/env';
  * EOS-backend, generated from a verbatim copy of EOS-backend/prisma/schema.prisma
  * (no tables added, changed, or removed).
  *
- * This client is used strictly for READS. The chatbot has no business logic
- * that creates, updates, or deletes ERP data — every mutation flow (marking
- * attendance, entering marks, approving leave, etc.) stays exactly where it
- * already lives, in EOS-backend. Grep this codebase for `.create(`, `.update(`,
- * `.delete(`, `.upsert(` against `prisma.` — there should be none outside
- * this comment.
+ * This client is READ-ONLY against every real EOS/ERP table. No mutation
+ * flow (marking attendance, entering marks, approving leave, etc.) is ever
+ * duplicated here — those stay exactly where they already live, in
+ * EOS-backend.
+ *
+ * EXCEPTION: 3 tables this chatbot owns itself — query_logs,
+ * training_examples, model_performance (plain CREATE TABLE, no migration
+ * framework, no relation to any EOS/ERP table) — DO get written to, by the
+ * learning pipeline (src/services/learning/*.service.ts). Grepping for
+ * `.create(`/`.update(`/`.delete(`/`.upsert(` against `prisma.` will find
+ * those; that's expected and scoped to those 3 tables only. See README.md
+ * "Learning pipeline" for the full picture.
  */
 // Connection pool configuration optimized for Supabase
 // SESSION-mode pooler has 15 concurrent session limit per project
