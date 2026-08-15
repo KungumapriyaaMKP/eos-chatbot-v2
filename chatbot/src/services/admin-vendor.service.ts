@@ -3,12 +3,13 @@ import { AppError } from '../utils/http-error';
 import { markdownTable, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 import { logger } from '../utils/logger';
+import { ROLES } from '../config/roles';
 
 /**
  * Admin: Vendor quotations for purchase items.
  */
 export async function adminVendorQuotes({ user, message }: HandlerContext): Promise<ChatReply> {
-  if (user.role !== 'admin') {
+  if (user.role !== ROLES.ADMIN) {
     throw AppError.forbidden('Only admins can view vendor quotations', 'INSUFFICIENT_ROLE');
   }
 
