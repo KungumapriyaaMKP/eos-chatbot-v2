@@ -40,12 +40,15 @@ generated Prisma Client built from a verbatim copy of
 one intentional one-line patch, explained [below](#one-schema-patch)). No
 table, column, or enum was added, renamed, or removed.
 
-**Every data-fetching handler in `src/services/` is read-only.** There is no
-`.create(`, `.update(`, `.delete(`, or `.upsert(` against the shared database
-anywhere in this codebase — every mutation flow (marking attendance,
-entering marks, approving leave, collecting a fee payment, etc.) stays
-exactly where it already lives, in EOS-backend. The chatbot only ever
-answers questions; it never changes ERP data.
+**Every data-fetching handler in `src/services/` is read-only against the
+shared EOS/ERP data.** There is no `.create(`, `.update(`, `.delete(`, or
+`.upsert(` against any EXISTING EOS-backend table anywhere in this
+codebase — every mutation flow (marking attendance, entering marks,
+approving leave, collecting a fee payment, etc.) stays exactly where it
+already lives, in EOS-backend. The chatbot never changes ERP data. (It DOES
+write to 3 small tables it owns itself — see [Learning
+pipeline](#learning-pipeline) — but those aren't EOS/ERP data, they're the
+chatbot's own query-logging/analytics tables.)
 
 **RBAC is never decided by the chatbot's "judgement."** The allowed roles
 for every intent come straight from the training dataset's own
