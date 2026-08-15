@@ -7,7 +7,8 @@ import { getSessionContext } from '../intent/session-context';
 import { SIBLING_INTENTS } from '../intent/sibling-intents';
 import { AppError } from '../utils/http-error';
 import { logger } from '../utils/logger';
-import { LOW_CONFIDENCE_MESSAGE, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
+import { pickLowConfidenceMessage, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
+import { paraphraseReply } from '../reply/paraphraser';
 import type { HandlerContext, IntentMatch } from '../intent/intent.types';
 import { logQuery } from '../services/learning/query-logger.service';
 
@@ -54,7 +55,7 @@ export async function chatHandler(req: Request, res: Response, next: NextFunctio
           module: pendingDefinition.module,
         } satisfies IntentMatch;
       } else {
-        const reply: ChatReply = { reply: LOW_CONFIDENCE_MESSAGE, intent: null, confidence: match.confidence };
+        const reply: ChatReply = { reply: pickLowConfidenceMessage(match.confidence), intent: null, confidence: match.confidence };
         res.status(200).json(reply);
         return;
       }
@@ -88,6 +89,13 @@ export async function chatHandler(req: Request, res: Response, next: NextFunctio
     const handler = INTENT_HANDLERS[match.intent!] ?? notWiredUp;
 
     const reply = await handler(ctx);
+
+    // Reword the (already fact-correct) reply for more natural phrasing —
+    // see src/reply/paraphraser.ts for why this can't corrupt the answer:
+    // the model only rewords a sentence the handler already built from real
+    // data, never decides facts itself, and any rewrite that fails a strict
+    // fact-preservation check falls back to the original untouched.
+    reply.reply = await paraphraseReply(reply.reply);
 
     // Log query for learning pipeline (async, non-blocking)
     logQuery({
