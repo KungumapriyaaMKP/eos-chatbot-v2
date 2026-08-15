@@ -6,6 +6,22 @@ import type { HandlerContext } from '../intent/intent.types';
 
 const BOT_NAME = 'EOS Assistant';
 
+/**
+ * The human-readable labels for every intent actually wired up
+ * (INTENT_HANDLERS has a real handler, per wired-intents.ts) that a given
+ * role is allowed to use — the same "what can THIS caller actually ask
+ * about" lookup that help() and notWiredUp() below both need, now also
+ * used by chat.controller.ts's low-confidence fallback (see
+ * pickLowConfidenceMessage) so a failed classification can suggest real
+ * topics instead of just admitting confusion.
+ */
+export function suggestedTopicsFor(role: string): string[] {
+  const labels = getAllIntents()
+    .filter((i) => i.roles.includes(role) && WIRED_INTENT_LABELS[i.name])
+    .map((i) => WIRED_INTENT_LABELS[i.name]);
+  return [...new Set(labels)];
+}
+
 export async function greeting({ user, match }: HandlerContext): Promise<ChatReply> {
   const firstName = user.name.split(' ')[0];
   return {
@@ -17,11 +33,7 @@ export async function greeting({ user, match }: HandlerContext): Promise<ChatRep
 
 /** "reply is built from the role's allowed intents" — per the dataset's own description. */
 export async function help({ user, match }: HandlerContext): Promise<ChatReply> {
-  const allowedLabels = getAllIntents()
-    .filter((i) => i.roles.includes(user.role) && WIRED_INTENT_LABELS[i.name])
-    .map((i) => WIRED_INTENT_LABELS[i.name]);
-
-  const unique = [...new Set(allowedLabels)];
+  const unique = suggestedTopicsFor(user.role);
 
   const reply =
     unique.length > 0
@@ -141,10 +153,7 @@ export async function redirectRequest({ match }: HandlerContext): Promise<ChatRe
  * no longer matched what was actually wired up.
  */
 export async function notWiredUp({ user, match }: HandlerContext): Promise<ChatReply> {
-  const allowedLabels = getAllIntents()
-    .filter((i) => i.roles.includes(user.role) && WIRED_INTENT_LABELS[i.name])
-    .map((i) => WIRED_INTENT_LABELS[i.name]);
-  const unique = [...new Set(allowedLabels)];
+  const unique = suggestedTopicsFor(user.role);
 
   const suggestion =
     unique.length > 0 ? `Please try asking about ${joinNaturally(unique)}.` : "I'm still being set up for your role, so please check back soon.";
