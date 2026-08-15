@@ -316,6 +316,28 @@ Denied and low-confidence cases still return `200` with a conversational
 { "status": "ok", "service": "eos-chatbot" }
 ```
 
+### Learning pipeline endpoints (all require `Authorization: Bearer`)
+
+See [Learning pipeline](#learning-pipeline) for the full review/approve/merge
+workflow these support.
+
+- **`POST /learning/feedback`** — `{ queryId, rating: 1-5, notes? }` ->
+  `{ success: true, message }`. Records self-reported feedback on a past
+  query (`query_logs.user_feedback_rating`/`is_correct`). Since this is
+  entirely self-reported with no verification, see the review-gate note in
+  [Learning pipeline](#learning-pipeline) for why it does NOT directly
+  produce approved training data.
+- **`GET /learning/stats?days=7`** -> query volume/accuracy/confidence
+  stats over the window (`src/services/learning/query-logger.service.ts`
+  `getQueryStats`).
+- **`GET /learning/performance-history?limit=10`** -> recent
+  `model_performance` snapshots (one per weekly analysis run).
+- **`POST /learning/analyze`** — **admin only** (403 otherwise). Body:
+  `{ days?: 7 }`. Manually triggers the same analysis the Sunday 2 AM cron
+  runs, instead of waiting for it — useful right after a burst of real
+  usage you want candidate examples from sooner. Returns the same shape as
+  the scheduled run logs.
+
 ## Intent coverage
 
 The classifier is trained on **95 intents / 2,533 examples** as of the
