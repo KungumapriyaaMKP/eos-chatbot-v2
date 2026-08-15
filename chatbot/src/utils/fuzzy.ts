@@ -87,6 +87,25 @@ function candidateScore(message: string, tokens: string[], fields: { codes?: str
     const lower = code.toLowerCase();
     for (const token of tokens) {
       if (STOPWORDS.has(token)) continue;
+
+      // Digits in a structured code (subject code, student ID, roll/register
+      // number) are the actual differentiator between otherwise-identical-
+      // looking entities — CS101 vs CS102 vs CS001 are different subjects
+      // ENTIRELY, not typo variants of each other, and the same goes for
+      // adjacent student IDs like 23IT001 vs 23IT101. Plain Levenshtein
+      // similarity doesn't know that: "cs001" vs "cs101" is a single edit in
+      // a 5-character string, scoring a comfortable 0.8 — well past the
+      // 0.72 threshold. Confirmed real bug: asking about a nonexistent
+      // "CS001" silently returned marks for the real, different "CS101"
+      // with no indication CS001 wasn't found. If both the token and the
+      // candidate code contain digits, those digit sequences must match
+      // EXACTLY before Levenshtein tolerance is allowed to apply to the
+      // rest (the letter prefix, where genuine typos — "cs"/"sc", a missing
+      // letter — are still forgiven).
+      const tokenDigits = token.replace(/[^0-9]/g, '');
+      const codeDigits = lower.replace(/[^0-9]/g, '');
+      if (tokenDigits && codeDigits && tokenDigits !== codeDigits) continue;
+
       best = Math.max(best, similarity(token, lower));
     }
   }
