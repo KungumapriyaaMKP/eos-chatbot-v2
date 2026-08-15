@@ -6,7 +6,37 @@ import { warmUpParaphraser } from './reply/paraphraser';
 import { prisma } from './utils/prisma';
 import { startScheduledAnalysis } from './scripts/scheduled-analyzer';
 
+const DEFAULT_JWT_SECRET = 'CHANGE_ME_IN_PRODUCTION';
+
+/**
+ * Refuses to boot in production with the default JWT secret still in
+ * place — that string is now publicly documented (README, requirements.txt,
+ * .env.example, this file), so leaving it unset in a real deployment means
+ * anyone who's read this repo can forge a valid token for any user/role.
+ * Every other NODE_ENV gets a loud warning instead of a hard failure, since
+ * dev/test convenience (no .env fuss for a quick local run) still matters
+ * there and the security stakes are much lower on localhost.
+ */
+function checkJwtSecret(): void {
+  if (env.jwt.secret !== DEFAULT_JWT_SECRET) return;
+
+  if (env.nodeEnv === 'production') {
+    throw new Error(
+      'CHATBOT_JWT_SECRET is unset (using the default placeholder) in a production environment. ' +
+        'Refusing to start — this is a real forgeable-token risk, not a formality. Set CHATBOT_JWT_SECRET in .env.',
+    );
+  }
+
+  logger.warn(
+    'bootstrap',
+    `CHATBOT_JWT_SECRET is unset — using the default placeholder. Fine for local dev, ` +
+      `but this MUST be set to a real secret before any shared/production deployment.`,
+  );
+}
+
 async function bootstrap() {
+  checkJwtSecret();
+
   // Loads the SBERT model + trained embeddings once at startup, so the
   // first real /chat request isn't slow. Fails fast with a clear message if
   // `npm run train` hasn't been run yet.
