@@ -145,6 +145,23 @@ function nameEndsWithToken(name: string, token: string): boolean {
 }
 
 /**
+ * Guards the generic fuzzy-name fallback below from a REAL false-positive
+ * found live while wiring this into get_marks: "what are my marks this
+ * semester" was matching 'University Semester Examination', because plain
+ * per-word fuzzy comparison treats "semester" as a normal, non-stopword
+ * token that scores a perfect 1.0 against the word "Semester" inside that
+ * name — even though the caller never asked about a specific EXAM at all,
+ * just used "semester" in its everyday calendar-time sense. Every real
+ * exam_types name (Internal Assessment I/II, University Semester
+ * Examination, Model Examination) contains "exam"/"examination" or
+ * "assessment" as a substring, so requiring one of those before even
+ * attempting the fuzzy fallback costs nothing for genuine exam-type
+ * mentions (the shorthand patterns above already catch every OTHER real
+ * phrasing) while blocking this specific false-positive class.
+ */
+const EXAM_SIGNAL_PATTERN = /\b(exam|assessment)/i;
+
+/**
  * Best-effort "did the user ask about a specific exam" check — e.g. "marks
  * in the last internal" or "semester exam results" — moved here (from
  * section-performance.service.ts, the only prior caller) so get_marks can
@@ -152,7 +169,10 @@ function nameEndsWithToken(name: string, token: string): boolean {
  * regardless of which single exam they actually asked about. Tries the
  * known-shorthand patterns above first (since those carry no textual
  * overlap with the real name for fuzzy matching to find), then falls back
- * to fuzzy matching against the exam type's actual name.
+ * to fuzzy matching against the exam type's actual name — but only when
+ * the message actually signals "this is about an exam" at all (see
+ * EXAM_SIGNAL_PATTERN), since a bare fuzzy word match is too easily
+ * confused by common words like "semester" used in a non-exam sense.
  */
 export async function matchExamTypeInMessage(message: string): Promise<MatchedExamType | null> {
   const examTypes = await prisma.exam_types.findMany({ select: { id: true, name: true } });
@@ -166,5 +186,6 @@ export async function matchExamTypeInMessage(message: string): Promise<MatchedEx
     if (found) return found;
   }
 
+  if (!EXAM_SIGNAL_PATTERN.test(message)) return null;
   return fuzzyFindBest(message, examTypes, (e) => ({ name: e.name }));
 }
