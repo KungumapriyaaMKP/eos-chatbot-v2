@@ -84,6 +84,21 @@ export const env = {
 
   allowedOrigins: process.env.ALLOWED_ORIGINS?.split(',') || '*',
 
+  rateLimit: {
+    // Per-IP, applies to every request (including unauthenticated /auth/login
+    // attempts) — the original FIX #4 protection against ID enumeration/DoS.
+    perIpPerMinute: parseInt(process.env.RATE_LIMIT_PER_IP_PER_MINUTE || '60', 10),
+    // Per-authenticated-user (JWT sub), applies only to /chat. Added
+    // alongside the per-IP limit, not instead of it: the per-IP limit alone
+    // has a real shared-network problem — every user behind the same
+    // campus NAT/proxy shares one IP-keyed budget, so a handful of active
+    // students can throttle each other even though none of them individually
+    // did anything abusive. Keying separately by user.sub means one
+    // legitimate user's real usage is judged against their OWN budget, not
+    // everyone else's on the same network.
+    perUserPerMinute: parseInt(process.env.RATE_LIMIT_PER_USER_PER_MINUTE || '30', 10),
+  },
+
   reply: {
     // Local generative model (src/reply/paraphraser.ts) that rewords an
     // already-correct, data-driven reply for more natural phrasing. ON by
