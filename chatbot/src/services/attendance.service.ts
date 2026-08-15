@@ -39,7 +39,7 @@ export async function getAttendance({ user, message }: HandlerContext): Promise<
     return { reply: notFoundReply(user, result, 'their attendance', 'get_attendance'), intent: 'get_attendance', confidence: 1 };
   }
 
-  const subject = await matchSubjectInMessage(message);
+  const subject = await matchSubjectInMessage(message, target.class_id);
 
   if (!subject && SHORTAGE_PATTERN.test(message)) {
     return getPerSubjectShortage(user, target);
