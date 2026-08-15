@@ -423,6 +423,60 @@ silently doing nothing or guessing.
 already enforced before your handler ever runs — just read `ctx.user` and
 `ctx.message`.
 
+## LLM-assisted reranking and paraphrasing
+
+Two narrow, additive uses of a local instruction-tuned model
+([Ollama](https://ollama.com), `llama3.2:3b` by default) — both fail safe
+to the existing deterministic/SBERT behavior on any timeout, unreachable
+daemon, or unexpected output. Neither is ever allowed to introduce a new
+fact.
+
+1. **Intent reranking** (`src/intent/llm-reranker.ts`) — after SBERT picks
+   a winner, hands its top `INTENT_LLM_RERANK_TOP_K` candidates (real
+   descriptions + example phrasings, not just scores) to Ollama to confirm
+   or override. Only runs when SBERT's own confidence is below
+   `INTENT_LLM_RERANK_CEILING` (default 0.72) — reranking every
+   classification unconditionally was measured to reduce accuracy (778→722
+   correct on the 1,000-question set), because reconsidering an
+   already-correct high-confidence pick has only downside risk. Gated,
+   it's a net improvement (778→795, 76.3%→77.9%).
+2. **Reply paraphrasing** (`src/reply/paraphraser.ts`) — rewords an
+   already-correct, data-driven reply for more natural phrasing. Never
+   queries the database itself — only rewords a sentence a handler already
+   built from real data. Every rewrite must preserve every numeric token,
+   every N-of-M ratio (checked as an ordered pair), and every proper noun
+   from the original exactly, plus clear a semantic-similarity floor
+   (cosine ≥ 0.8) — any failure falls back to the untouched original.
+
+Setup: `ollama pull llama3.2:3b`. Both features are optional
+(`INTENT_LLM_RERANK_ENABLED` / `REPLY_PARAPHRASE_ENABLED`, both default
+`true`) — the chatbot works correctly without Ollama running at all, just
+with slightly more template-y replies and no rerank safety net.
+
+## Learning pipeline
+
+Three chatbot-owned tables (`query_logs`, `training_examples`,
+`model_performance` — plain `CREATE TABLE`, no migration framework, no
+relation to any existing EOS/ERP table) back a lightweight
+self-improvement loop:
+
+- Every chat turn is logged (`src/services/learning/query-logger.service.ts`,
+  fire-and-forget, never blocks the reply).
+- A weekly cron job (`node-cron`, Sunday 2 AM,
+  `src/scripts/scheduled-analyzer.ts`) analyzes the last 7 days and
+  auto-inserts candidate new training examples from incorrect/low-confidence
+  queries — **with no admin review gate**, which is worth knowing if you're
+  relying on this for anything beyond manual inspection.
+- **Important limitation:** this pipeline does not close the loop by
+  itself. Nothing automatically feeds `training_examples` back into the
+  `.docx` dataset or `embeddings.json`, and nothing automatically re-runs
+  `npm run train` or restarts the server. Today, turning a candidate
+  example into an actual accuracy improvement is still a manual process —
+  review `training_examples`, hand-add good phrasings via a
+  `rebuild-dataset-vN.ts`-style script, `npm run train`, restart.
+- `GET /learning/stats` and `POST /learning/feedback` expose this data to
+  a caller; see `src/routes/learning.routes.ts`.
+
 ## Testing without a live database
 
 ```bash
