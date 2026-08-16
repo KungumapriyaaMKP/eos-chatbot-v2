@@ -1,7 +1,7 @@
 import { prisma } from '../utils/prisma';
 import { resolveOwnFaculty } from './faculty-lookup.util';
 import { resolveTargetClass } from './class-match.util';
-import { round2, toDateOnly, monthName, markdownTable, joinNaturally, type ChatReply } from '../utils/response';
+import { round2, toDateOnly, monthName, markdownTable, joinNaturally, formatCurrency, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 
 function formatMediaRequestStatus(status: string): string {
@@ -75,26 +75,69 @@ function formatPayslipStatus(status: string): string {
   return status === 'processed' ? 'Processed' : status === 'rejected' ? 'Rejected' : 'Pending';
 }
 
-/** faculty_payslip — faculty: own payslip_requests. */
+/**
+ * faculty_payslip — faculty: real paid-salary amounts (salary_payments:
+ * gross/net per month, real money) PLUS payslip document-request status
+ * (payslip_requests: has the PDF been generated, real workflow state) —
+ * two genuinely different tables that answer two genuinely different
+ * questions. A real user asking "what is my salary" wants the AMOUNT;
+ * this handler used to answer ONLY from payslip_requests (a document-
+ * generation tracker with no monetary figure in it at all — it has month/
+ * year/status/file_url, nothing else), so "what is my salary" got back a
+ * table of "Pending"/"Processed" with zero rupee figures anywhere. Now
+ * leads with the real gross/net amounts from salary_payments, and
+ * mentions payslip document status separately/secondarily since that's
+ * still real, relevant information — just not what "salary" itself means.
+ */
 export async function getFacultyPayslip({ user }: HandlerContext): Promise<ChatReply> {
   const faculty = await resolveOwnFaculty(user.sub);
   if (!faculty) {
     return { reply: "I couldn't find a faculty profile linked to your account.", intent: 'faculty_payslip', confidence: 1 };
   }
 
-  const payslips = await prisma.payslip_requests.findMany({
-    where: { faculty_id: faculty.id },
-    orderBy: [{ year: 'desc' }, { month: 'desc' }],
-    take: 6,
-    select: { month: true, year: true, status: true },
-  });
+  const [payments, requests] = await Promise.all([
+    prisma.salary_payments.findMany({
+      where: { faculty_id: faculty.id },
+      orderBy: [{ year: 'desc' }, { month: 'desc' }],
+      take: 6,
+      select: { month: true, year: true, gross_amount: true, net_amount: true, paid_at: true },
+    }),
+    prisma.payslip_requests.findMany({
+      where: { faculty_id: faculty.id },
+      orderBy: [{ year: 'desc' }, { month: 'desc' }],
+      take: 6,
+      select: { month: true, year: true, status: true },
+    }),
+  ]);
 
-  if (payslips.length === 0) {
-    return { reply: "You haven't requested any payslips yet.", intent: 'faculty_payslip', confidence: 1 };
+  if (payments.length === 0 && requests.length === 0) {
+    return { reply: "I don't see any salary payments or payslip requests on record for you yet.", intent: 'faculty_payslip', confidence: 1 };
   }
 
-  const table = markdownTable(['Month', 'Year', 'Status'], payslips.map((p) => [monthName(p.month), p.year, formatPayslipStatus(p.status)]));
-  return { reply: `Your payslip requests:\n\n${table}`, intent: 'faculty_payslip', confidence: 1, data: payslips };
+  const parts: string[] = [];
+
+  if (payments.length > 0) {
+    const table = markdownTable(
+      ['Month', 'Year', 'Gross', 'Net', 'Paid'],
+      payments.map((p) => [
+        monthName(p.month),
+        p.year,
+        formatCurrency(Number(p.gross_amount)),
+        formatCurrency(Number(p.net_amount)),
+        p.paid_at ? toDateOnly(p.paid_at) : 'Not yet paid',
+      ]),
+    );
+    parts.push(`Your salary:\n\n${table}`);
+  } else {
+    parts.push("I don't see any processed salary payments on record for you yet.");
+  }
+
+  if (requests.length > 0) {
+    const table = markdownTable(['Month', 'Year', 'Status'], requests.map((p) => [monthName(p.month), p.year, formatPayslipStatus(p.status)]));
+    parts.push(`Your payslip document requests:\n\n${table}`);
+  }
+
+  return { reply: parts.join('\n\n'), intent: 'faculty_payslip', confidence: 1, data: { payments, requests } };
 }
 
 /** faculty_invigilation — faculty: own invigilation_duties. */
