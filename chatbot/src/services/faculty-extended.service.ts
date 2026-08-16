@@ -193,6 +193,7 @@ export async function getFacultyLowAttendance({ user, message }: HandlerContext)
 
   const byStudent = new Map<number, { total: number; present: number; label: string }>();
   for (const r of records) {
+    if (r.status !== 'present' && r.status !== 'absent') continue; // on_duty excluded, see attendance-stats.util.ts
     const entry = byStudent.get(r.student_id) ?? {
       total: 0,
       present: 0,
