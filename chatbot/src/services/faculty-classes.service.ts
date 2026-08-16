@@ -2,7 +2,8 @@ import { prisma } from '../utils/prisma';
 import { ROLES } from '../config/roles';
 import { resolveOwnFaculty, resolveFacultyByFreeText, type ResolvedFaculty } from './faculty-lookup.util';
 import { resolveTargetClass } from './class-match.util';
-import { round2, joinNaturally, markdownTable, type ChatReply } from '../utils/response';
+import { joinNaturally, markdownTable, type ChatReply } from '../utils/response';
+import { computeAttendanceStats } from './attendance-stats.util';
 import type { HandlerContext } from '../intent/intent.types';
 
 /**
@@ -89,14 +90,11 @@ export async function getClassAttendance({ user, message }: HandlerContext): Pro
     select: { status: true },
   });
 
-  const total = records.length;
-  const present = records.filter((r) => r.status === 'present').length;
-
-  if (total === 0) {
+  if (records.length === 0) {
     return { reply: `No attendance has been recorded yet for ${match.label}.`, intent: 'faculty_class_attendance', confidence: 1 };
   }
 
-  const percentage = round2((present / total) * 100);
+  const { present, total, percentage } = computeAttendanceStats(records);
   return {
     reply: `${match.label} attendance: ${percentage}% overall (${present} present out of ${total} records).`,
     intent: 'faculty_class_attendance',
