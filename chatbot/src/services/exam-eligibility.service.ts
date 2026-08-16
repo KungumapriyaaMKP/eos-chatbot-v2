@@ -1,6 +1,7 @@
 import { prisma } from '../utils/prisma';
 import { resolveTargetStudent, notFoundReply, possessive, NO_LINKED_STUDENT_MESSAGE } from './student-lookup.util';
 import { round2, toDateOnly, endSentence, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
+import { computeAttendanceStats } from './attendance-stats.util';
 import { ROLES } from '../config/roles';
 import type { HandlerContext } from '../intent/intent.types';
 
@@ -47,17 +48,17 @@ export async function getExamEligibility({ user, message }: HandlerContext): Pro
   }
 
   const records = await prisma.attendance_records.findMany({ where: { student_id: target.id }, select: { status: true } });
-  const total = records.length;
-  const present = records.filter((r) => r.status === 'present').length;
   const who = possessive(user, target);
 
-  if (total === 0) {
+  if (records.length === 0) {
     return {
       reply: endSentence(`I don't see any attendance records for ${target.name} yet, so I can't assess exam eligibility`),
       intent: 'get_exam_eligibility',
       confidence: 1,
     };
   }
+
+  const { present, total } = computeAttendanceStats(records);
 
   const currentPercentage = round2((present / total) * 100);
   const isEligibleNow = currentPercentage >= ASSUMED_ELIGIBILITY_THRESHOLD;
