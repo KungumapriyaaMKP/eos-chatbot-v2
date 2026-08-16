@@ -5,6 +5,7 @@ import { resolveTargetClass } from './class-match.util';
 import { joinNaturally, markdownTable, toDateOnly, type ChatReply } from '../utils/response';
 import { computeAttendanceStats } from './attendance-stats.util';
 import { matchDateInMessage } from './date-match.util';
+import { updateSessionContext } from '../intent/session-context';
 import type { HandlerContext } from '../intent/intent.types';
 
 /**
@@ -117,7 +118,7 @@ export async function getClassAttendance({ user, message }: HandlerContext): Pro
   const asksWho = WHO_PATTERN.test(message) && (ABSENT_PATTERN.test(message) || PRESENT_PATTERN.test(message));
   if (asksWho) {
     const targetDate = matchDateInMessage(message) ?? todayDateOnly();
-    return classRosterForDate(match, ABSENT_PATTERN.test(message) ? 'absent' : 'present', targetDate);
+    return classRosterForDate(user.sub, match, ABSENT_PATTERN.test(message) ? 'absent' : 'present', targetDate);
   }
 
   const records = await prisma.attendance_records.findMany({
@@ -148,6 +149,7 @@ export async function getClassAttendance({ user, message }: HandlerContext): Pro
  * silently answered about today instead.
  */
 async function classRosterForDate(
+  callerUserId: number,
   match: { id: number; label: string },
   status: 'absent' | 'present',
   targetDate: Date,
@@ -156,7 +158,7 @@ async function classRosterForDate(
     where: { class_id: match.id, attendance_date: targetDate, status },
     select: {
       students: {
-        select: { roll_no: true, student_id_no: true, soa_applications: { select: { first_name: true, last_name: true } } },
+        select: { id: true, roll_no: true, student_id_no: true, soa_applications: { select: { first_name: true, last_name: true } } },
       },
     },
     orderBy: { students: { roll_no: 'asc' } },
@@ -175,6 +177,14 @@ async function classRosterForDate(
       confidence: 1,
       data: [],
     };
+  }
+
+  // Remember exactly ONE named student for a follow-up like "name"/"who is
+  // that" — see get_profile's session-aware branch. Deliberately NOT set
+  // when there's more than one (ambiguous which one a bare follow-up would
+  // mean), same "no confident match beats a guess" stance used elsewhere.
+  if (records.length === 1) {
+    updateSessionContext(callerUserId, { lastStudentId: records[0].students.id });
   }
 
   const names = records.map((r) => studentLabel(r.students));

@@ -1,14 +1,86 @@
 import { prisma } from '../utils/prisma';
 import { ROLES } from '../config/roles';
 import { toDateOnly, markdownTable, type ChatReply } from '../utils/response';
+import { getSessionContext } from '../intent/session-context';
 import type { HandlerContext } from '../intent/intent.types';
 
 /**
- * get_profile — student/faculty/admin, always self-scoped (student_id /
- * faculty_id / user_id resolved from the JWT, exactly like EOS-backend's
- * own GET /me/profile and GET /auth/me).
+ * "am I the one being asked about, or is this a follow-up about the
+ * student we were just discussing?" — real gap found live: faculty asked
+ * "who was absent on 13 august" (got one real student back), then asked
+ * bare "name", expecting THAT student's name — got the FACULTY's own
+ * profile instead, since get_profile is unconditionally self-scoped.
+ *
+ * A first-person word ("my"/"i"/"me"/"myself") always means self,
+ * unconditionally — this check only matters for the genuinely ambiguous
+ * bare case ("name", "profile", "who is that", "details").
  */
-export async function getProfile({ user }: HandlerContext): Promise<ChatReply> {
+const FIRST_PERSON_PATTERN = /\b(my|i|me|myself)\b/i;
+
+/**
+ * NOT the same thing as isLookupRole (student-lookup.util.ts) — that gates
+ * ADMIN/COE looking up an ARBITRARY student by name/ID anywhere in the
+ * institution, a real capability boundary. This is narrower: faculty/hod
+ * already legitimately SAW this exact student's name moments ago, via
+ * their own class's attendance roster (see faculty-classes.service.ts
+ * classRosterForDate, the only place that sets lastStudentId for a
+ * non-lookup role) — resolving "name" to that student isn't a new lookup
+ * capability, it's just continuing an answer already authorized and
+ * already given.
+ */
+const FOLLOWUP_ELIGIBLE_ROLES = new Set<string>([ROLES.FACULTY, ROLES.HOD, ROLES.ADMIN]);
+
+/**
+ * get_profile — student/faculty/admin, self-scoped by default (student_id /
+ * faculty_id / user_id resolved from the JWT, exactly like EOS-backend's
+ * own GET /me/profile and GET /auth/me) — EXCEPT a genuinely ambiguous
+ * bare follow-up ("name", not "my profile") from a role that just saw a
+ * specific student surfaced via their own class roster, which resolves to
+ * that student instead. See FOLLOWUP_ELIGIBLE_ROLES above for why this
+ * doesn't cross the real lookup-capability boundary.
+ */
+export async function getProfile({ user, message }: HandlerContext): Promise<ChatReply> {
+  if (FOLLOWUP_ELIGIBLE_ROLES.has(user.role) && !FIRST_PERSON_PATTERN.test(message)) {
+    const lastStudentId = getSessionContext(user.sub)?.lastStudentId;
+    if (lastStudentId) {
+      const reply = await studentBasicProfile(lastStudentId);
+      if (reply) return reply;
+    }
+  }
+
+  return selfProfile(user);
+}
+
+/** Basic (not full personal) profile for a student already legitimately surfaced to the caller — see FOLLOWUP_ELIGIBLE_ROLES above. */
+async function studentBasicProfile(studentId: number): Promise<ChatReply | null> {
+  const student = await prisma.students.findUnique({
+    where: { id: studentId },
+    select: {
+      student_id_no: true,
+      roll_no: true,
+      classes: { select: { section: true, current_semester: true, departments: { select: { code: true } } } },
+      soa_applications: { select: { first_name: true, last_name: true } },
+    },
+  });
+  if (!student) return null;
+
+  const name = [student.soa_applications?.first_name, student.soa_applications?.last_name].filter(Boolean).join(' ') || student.roll_no || student.student_id_no;
+
+  const table = markdownTable(
+    ['Field', 'Value'],
+    [
+      ['Name', name],
+      ['Roll No', student.roll_no ?? 'N/A'],
+      ['Student ID', student.student_id_no],
+      ['Class', student.classes ? `${student.classes.departments.code}-${student.classes.section}` : 'N/A'],
+      ['Semester', student.classes?.current_semester ?? 'N/A'],
+    ],
+  );
+
+  return { reply: `Profile for the student just mentioned:\n\n${table}`, intent: 'get_profile', confidence: 1, data: student };
+}
+
+async function selfProfile(user: HandlerContext['user']): Promise<ChatReply> {
   // user.name already carries the same soa_applications-first, then
   // faculty-name, then email-local-part fallback that auth.service.ts
   // resolves once at login (resolveDisplayName) — reusing it here instead
