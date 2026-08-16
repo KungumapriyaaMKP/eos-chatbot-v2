@@ -72,7 +72,10 @@ export async function getQueryStats(days: number = 7) {
   const total = stats.length;
   const correct = stats.filter((s) => s.is_correct === true).length;
   const incorrect = stats.filter((s) => s.is_correct === false).length;
-  const accuracy = total > 0 ? ((correct / total) * 100).toFixed(2) : '0.00';
+  // NOT classifier accuracy — % of ALL queries with an explicit "correct"
+  // via /learning/feedback, which most queries never receive at all. Same
+  // fix as model-analyzer.service.ts's identical framing issue.
+  const positiveFeedbackRate = total > 0 ? ((correct / total) * 100).toFixed(2) : '0.00';
 
   const lowConfidence = stats.filter((s) => {
     const conf = parseFloat((s.confidence || 0).toString());
@@ -92,7 +95,7 @@ export async function getQueryStats(days: number = 7) {
     total_queries: total,
     correct_predictions: correct,
     incorrect_predictions: incorrect,
-    accuracy_percentage: accuracy,
+    positive_feedback_percentage: positiveFeedbackRate,
     low_confidence_count: lowConfidence,
     average_confidence: avgConfidence,
     intents: stats

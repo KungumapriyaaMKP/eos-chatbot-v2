@@ -11,7 +11,8 @@ export function startScheduledAnalysis() {
         const result = await analyzeAndPrepareRetrainingData(7);
         logger.log(
           'scheduler',
-          `Analysis complete: ${result.new_training_examples_added} new examples added. Accuracy: ${result.accuracy_percentage}%`,
+          `Analysis complete: ${result.new_training_examples_added} new examples added. ` +
+            `Positive feedback rate: ${result.positive_feedback_percentage}% (not a classifier accuracy measure).`,
         );
 
         if (result.retrain_triggered) {

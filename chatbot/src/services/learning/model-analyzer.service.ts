@@ -142,8 +142,17 @@ export async function analyzeAndPrepareRetrainingData(daysBack: number = 7) {
     where: { created_at: { gte: since } },
   });
 
+  // NOT classifier accuracy — this is the % of ALL queries in the window
+  // that received an explicit "that was correct" via /learning/feedback,
+  // which in practice is a tiny fraction (most queries get no feedback at
+  // all). Confirmed live: a real 172-query week reported "Accuracy: 0.00%"
+  // when nobody had used /learning/feedback yet — reading as "the bot got
+  // everything wrong" when the true story is "nobody rated anything".
+  // Kept the underlying accuracy_rate DB column name as-is (a rename is a
+  // schema/migration change, out of scope here) but the log line and
+  // returned field below are now honest about what this actually measures.
   const correctCount = userCorrect.length;
-  const accuracy = total > 0 ? (correctCount / total) * 100 : 0;
+  const positiveFeedbackRate = total > 0 ? (correctCount / total) * 100 : 0;
   const avgConfidence =
     total > 0
       ? (
@@ -159,11 +168,11 @@ export async function analyzeAndPrepareRetrainingData(daysBack: number = 7) {
     data: {
       training_date: new Date(),
       total_queries_analyzed: total,
-      accuracy_rate: parseFloat(accuracy.toFixed(2)),
+      accuracy_rate: parseFloat(positiveFeedbackRate.toFixed(2)),
       misclassification_count: incorrect.length,
       avg_confidence: parseFloat(String(avgConfidence)),
       low_confidence_count: lowConfidence.length,
-      positive_feedback_pct: total > 0 ? parseFloat(((correctCount / total) * 100).toFixed(2)) : 0,
+      positive_feedback_pct: parseFloat(positiveFeedbackRate.toFixed(2)),
       new_examples_added: addedCount,
       // NOT an actual automatic retrain — see the review-gate note at the
       // top of this file. This just flags "enough NEW PENDING candidates
@@ -175,7 +184,9 @@ export async function analyzeAndPrepareRetrainingData(daysBack: number = 7) {
 
   logger.log(
     'model-analyzer',
-    `Analysis complete: Added ${addedCount} training examples. Accuracy: ${accuracy.toFixed(2)}%`,
+    `Analysis complete: Added ${addedCount} training examples. ` +
+      `${correctCount}/${total} queries had explicit positive feedback (${positiveFeedbackRate.toFixed(2)}%) — ` +
+      `not a classifier accuracy measure, most queries get no feedback at all.`,
   );
 
   return {
@@ -185,7 +196,7 @@ export async function analyzeAndPrepareRetrainingData(daysBack: number = 7) {
     incorrect_predictions: incorrect.length,
     user_confirmed_correct: userCorrect.length,
     new_training_examples_added: addedCount,
-    accuracy_percentage: accuracy.toFixed(2),
+    positive_feedback_percentage: positiveFeedbackRate.toFixed(2),
     average_confidence: avgConfidence,
     retrain_triggered: addedCount > 10,
   };
