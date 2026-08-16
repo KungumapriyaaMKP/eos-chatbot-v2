@@ -121,6 +121,11 @@ async function selfProfile(user: HandlerContext['user']): Promise<ChatReply> {
         ['Roll No', student.roll_no ?? 'N/A'],
         ['Student ID', student.student_id_no],
         ['Register No', student.register_no ?? 'N/A'],
+        // Real gap found live: date_of_birth was fetched (select above)
+        // but never shown here — a student specifically asking "what's my
+        // dob" would get a correctly-classified reply with the one thing
+        // they actually asked for silently missing.
+        ['Date of Birth', student.date_of_birth ? toDateOnly(student.date_of_birth) : 'N/A'],
       ],
     );
 
