@@ -1854,6 +1854,7 @@ enum approval_status_enum {
 enum attendance_status_enum {
   present
   absent
+  on_duty
 }
 
 enum bonafide_status_enum {
