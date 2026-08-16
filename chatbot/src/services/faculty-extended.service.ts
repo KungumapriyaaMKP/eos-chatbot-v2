@@ -1,7 +1,7 @@
 import { prisma } from '../utils/prisma';
 import { resolveOwnFaculty } from './faculty-lookup.util';
 import { resolveTargetClass } from './class-match.util';
-import { round2, toDateOnly, markdownTable, joinNaturally, type ChatReply } from '../utils/response';
+import { round2, toDateOnly, monthName, markdownTable, joinNaturally, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 
 function formatMediaRequestStatus(status: string): string {
@@ -93,7 +93,7 @@ export async function getFacultyPayslip({ user }: HandlerContext): Promise<ChatR
     return { reply: "You haven't requested any payslips yet.", intent: 'faculty_payslip', confidence: 1 };
   }
 
-  const table = markdownTable(['Month', 'Year', 'Status'], payslips.map((p) => [p.month, p.year, formatPayslipStatus(p.status)]));
+  const table = markdownTable(['Month', 'Year', 'Status'], payslips.map((p) => [monthName(p.month), p.year, formatPayslipStatus(p.status)]));
   return { reply: `Your payslip requests:\n\n${table}`, intent: 'faculty_payslip', confidence: 1, data: payslips };
 }
 

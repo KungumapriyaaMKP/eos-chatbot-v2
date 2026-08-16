@@ -17,6 +17,23 @@ export function formatHHMM(date: Date): string {
   return date.toISOString().slice(11, 16);
 }
 
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/**
+ * "11" -> "November" — several tables (payslip_requests.month, etc.) store
+ * a plain 1-12 int with no calendar type, so nothing converts it
+ * automatically the way a real Date column would. Displaying the bare
+ * number reads badly ("Month: 11") for something a real user expects as a
+ * name. Falls back to the raw number string for anything outside 1-12
+ * (bad data shouldn't crash a reply, just look a little odd).
+ */
+export function monthName(month: number): string {
+  return MONTH_NAMES[month - 1] ?? String(month);
+}
+
 export function formatCurrency(amount: number): string {
   return `₹${amount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 }
