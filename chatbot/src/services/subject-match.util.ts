@@ -189,3 +189,51 @@ export async function matchExamTypeInMessage(message: string): Promise<MatchedEx
   if (!EXAM_SIGNAL_PATTERN.test(message)) return null;
   return fuzzyFindBest(message, examTypes, (e) => ({ name: e.name }));
 }
+
+/**
+ * Ordinal/cardinal word forms for "which semester" — a real gap found live:
+ * "give my mark in first semester" returned the caller's ENTIRE mark
+ * history (85 rows across 6 real semesters for one actual student) because
+ * nothing matched semester NUMBER at all — matchSubjectInMessage only
+ * handles subject, matchExamTypeInMessage only handles exam type (IA1/IA2/
+ * university exam), and `exams.semester` (a real, populated int column)
+ * was never consulted by anything.
+ */
+const SEMESTER_ORDINAL_WORDS: Record<string, number> = {
+  first: 1, one: 1,
+  second: 2, two: 2,
+  third: 3, three: 3,
+  fourth: 4, four: 4,
+  fifth: 5, five: 5,
+  sixth: 6, six: 6,
+  seventh: 7, seven: 7,
+  eighth: 8, eight: 8,
+};
+
+/**
+ * Deliberately requires "semester"/"sem" directly adjacent to the number/
+ * ordinal (not just present anywhere in the message) — the whole point is
+ * to avoid a bare ordinal used in an unrelated sense ("my second attempt",
+ * "third subject") being mistaken for a semester reference. Handles both
+ * orders ("semester 3" / "3rd semester") and both numeric ("3", "3rd") and
+ * word ("third") forms. Returns null (meaning: don't filter by semester)
+ * when nothing matches — same "no confident match beats no match" stance
+ * as matchSubjectInMessage/matchExamTypeInMessage.
+ */
+export function matchSemesterInMessage(message: string): number | null {
+  const lower = message.toLowerCase();
+
+  const numeric =
+    lower.match(/\b(?:semester|sem)\s*[-#]?\s*(\d{1,2})\b/) ?? lower.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s*(?:semester|sem)\b/);
+  if (numeric) {
+    const n = parseInt(numeric[1], 10);
+    if (n >= 1 && n <= 12) return n; // sane upper bound — no real program runs more than ~12 semesters
+  }
+
+  for (const [word, n] of Object.entries(SEMESTER_ORDINAL_WORDS)) {
+    const pattern = new RegExp(`\\b${word}\\s+(?:semester|sem)\\b|\\b(?:semester|sem)\\s+${word}\\b`, 'i');
+    if (pattern.test(lower)) return n;
+  }
+
+  return null;
+}

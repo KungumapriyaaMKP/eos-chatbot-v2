@@ -1,7 +1,7 @@
 import { prisma } from '../utils/prisma';
 import { ROLES } from '../config/roles';
 import { resolveTargetStudent, notFoundReply, possessive } from './student-lookup.util';
-import { matchSubjectInMessage, matchExamTypeInMessage } from './subject-match.util';
+import { matchSubjectInMessage, matchExamTypeInMessage, matchSemesterInMessage } from './subject-match.util';
 import { endSentence, markdownTable, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 
@@ -31,6 +31,7 @@ export async function getMarks({ user, message }: HandlerContext): Promise<ChatR
     matchSubjectInMessage(message, target.class_id),
     matchExamTypeInMessage(message),
   ]);
+  const semester = matchSemesterInMessage(message);
   const publishedOnly = user.role === ROLES.STUDENT || user.role === ROLES.PARENT;
 
   const rows = await prisma.exam_marks.findMany({
@@ -40,6 +41,7 @@ export async function getMarks({ user, message }: HandlerContext): Promise<ChatR
         ...(subject && { subject_id: subject.id }),
         exams: {
           ...(examType && { exam_type_id: examType.id }),
+          ...(semester !== null && { semester }),
           // Students/parents only ever see published results; admin sees everything.
           ...(publishedOnly && { status: 'results_published' }),
         },
@@ -58,7 +60,9 @@ export async function getMarks({ user, message }: HandlerContext): Promise<ChatR
     orderBy: { entered_at: 'desc' },
   });
 
-  const scopeParts = [subject?.name, examType?.name].filter((v): v is string => Boolean(v));
+  const scopeParts = [subject?.name, examType?.name, semester !== null ? `semester ${semester}` : null].filter(
+    (v): v is string => Boolean(v),
+  );
   const scope = scopeParts.length > 0 ? ` for ${scopeParts.join(', ')}` : '';
 
   if (rows.length === 0) {
