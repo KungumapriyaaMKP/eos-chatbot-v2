@@ -1,4 +1,5 @@
 import { prisma } from '../utils/prisma';
+import { ROLES } from '../config/roles';
 import { formatCurrency, round2, markdownTable, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 
@@ -146,5 +147,116 @@ export async function getAdminMarksEntryStatus({ user }: HandlerContext): Promis
     intent: 'admin_marks_entry_status',
     confidence: 1,
     data: { total: mappings.length, notStarted: notStarted.length },
+  };
+}
+
+/**
+ * admin_institution_performance — admin: institution-wide, hod:
+ * department-wide cross-class aggregate. Real gap found during a
+ * comprehensive audit: section_performance already covers attendance/marks
+ * for ONE named class at a time, but there was no way to ask for a
+ * cross-class average or a best/worst-performing section comparison.
+ *
+ * Attendance excludes on_duty from both numerator and denominator, same
+ * convention as attendance-stats.util.ts (an approved on-duty day is an
+ * excused absence, shouldn't count against a class either way here).
+ */
+export async function getInstitutionPerformance({ user }: HandlerContext): Promise<ChatReply> {
+  let departmentFilter: { department_id?: number } = {};
+  let scopeLabel = 'the institution';
+
+  if (user.role === ROLES.HOD) {
+    const faculty = await prisma.faculty.findUnique({
+      where: { user_id: user.sub },
+      select: { department_id: true, departments: { select: { name: true } } },
+    });
+    if (!faculty) {
+      return { reply: "I couldn't find a faculty profile linked to your account.", intent: 'admin_institution_performance', confidence: 1 };
+    }
+    departmentFilter = { department_id: faculty.department_id };
+    scopeLabel = faculty.departments.name;
+  }
+
+  const classes = await prisma.classes.findMany({
+    where: departmentFilter,
+    select: { id: true, section: true, departments: { select: { code: true } } },
+  });
+
+  if (classes.length === 0) {
+    return { reply: `No classes found for ${scopeLabel}.`, intent: 'admin_institution_performance', confidence: 1 };
+  }
+
+  const classIds = classes.map((c) => c.id);
+  const classLabel = new Map(classes.map((c) => [c.id, `${c.departments.code}-${c.section}`]));
+
+  const [attendanceRecords, marksRecords, totalStudents] = await Promise.all([
+    prisma.attendance_records.findMany({
+      where: { class_id: { in: classIds } },
+      select: { class_id: true, status: true },
+    }),
+    prisma.exam_marks.findMany({
+      where: { exam_subject_mapping: { class_id: { in: classIds } }, marks_obtained: { not: null } },
+      select: { marks_obtained: true, max_marks: true, exam_subject_mapping: { select: { class_id: true } } },
+    }),
+    prisma.students.count({ where: { class_id: { in: classIds } } }),
+  ]);
+
+  const attendanceByClass = new Map<number, { present: number; total: number }>();
+  for (const r of attendanceRecords) {
+    if (r.status !== 'present' && r.status !== 'absent') continue; // on_duty excluded, see attendance-stats.util.ts
+    const entry = attendanceByClass.get(r.class_id) ?? { present: 0, total: 0 };
+    entry.total += 1;
+    if (r.status === 'present') entry.present += 1;
+    attendanceByClass.set(r.class_id, entry);
+  }
+  const attendancePercentages = [...attendanceByClass.entries()]
+    .filter(([, v]) => v.total > 0)
+    .map(([classId, v]) => ({ classId, percentage: round2((v.present / v.total) * 100) }));
+
+  const marksByClass = new Map<number, number[]>();
+  for (const r of marksRecords) {
+    const pct = (Number(r.marks_obtained) / Number(r.max_marks)) * 100;
+    const arr = marksByClass.get(r.exam_subject_mapping.class_id) ?? [];
+    arr.push(pct);
+    marksByClass.set(r.exam_subject_mapping.class_id, arr);
+  }
+  const marksPercentages = [...marksByClass.entries()].map(([classId, arr]) => ({
+    classId,
+    percentage: round2(arr.reduce((a, b) => a + b, 0) / arr.length),
+  }));
+
+  const lines: string[] = [`Performance summary for ${scopeLabel} (${classes.length} class(es), ${totalStudents} student(s) enrolled):`];
+
+  if (attendancePercentages.length > 0) {
+    const avg = round2(attendancePercentages.reduce((s, p) => s + p.percentage, 0) / attendancePercentages.length);
+    const best = attendancePercentages.reduce((a, b) => (b.percentage > a.percentage ? b : a));
+    const worst = attendancePercentages.reduce((a, b) => (b.percentage < a.percentage ? b : a));
+    lines.push(
+      '',
+      `Attendance — average ${avg}% across ${attendancePercentages.length} class(es) with recorded attendance.`,
+      `Best: ${classLabel.get(best.classId)} (${best.percentage}%). Worst: ${classLabel.get(worst.classId)} (${worst.percentage}%).`,
+    );
+  } else {
+    lines.push('', `No attendance has been recorded yet for ${scopeLabel}.`);
+  }
+
+  if (marksPercentages.length > 0) {
+    const avg = round2(marksPercentages.reduce((s, p) => s + p.percentage, 0) / marksPercentages.length);
+    const best = marksPercentages.reduce((a, b) => (b.percentage > a.percentage ? b : a));
+    const worst = marksPercentages.reduce((a, b) => (b.percentage < a.percentage ? b : a));
+    lines.push(
+      '',
+      `Marks — average ${avg}% across ${marksPercentages.length} class(es) with recorded marks.`,
+      `Best: ${classLabel.get(best.classId)} (${best.percentage}%). Worst: ${classLabel.get(worst.classId)} (${worst.percentage}%).`,
+    );
+  } else {
+    lines.push('', `No marks have been recorded yet for ${scopeLabel}.`);
+  }
+
+  return {
+    reply: lines.join('\n'),
+    intent: 'admin_institution_performance',
+    confidence: 1,
+    data: { classes: classes.length, totalStudents, attendancePercentages, marksPercentages },
   };
 }

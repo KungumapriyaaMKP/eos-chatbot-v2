@@ -29,7 +29,7 @@ import { getFeeBreakup, getDDStatus } from '../services/fee-details.service';
 import { getUpcomingDrives, getDriveApplications } from '../services/placement.service';
 import { getODStatus, getNotifications, getSubjectNotes } from '../services/student-requests.service';
 import { getFacultyMentees, getFacultyPayslip, getFacultyInvigilation, getFacultyAppraisal, getFacultyLowAttendance } from '../services/faculty-extended.service';
-import { getAdminFeeCollection, getAdminOverdueBooks, getAdminPendingApprovals, getAdminStudentsOutNow, getAdminHostelOccupancy, getAdminMarksEntryStatus } from '../services/admin-analytics.service';
+import { getAdminFeeCollection, getAdminOverdueBooks, getAdminPendingApprovals, getAdminStudentsOutNow, getAdminHostelOccupancy, getAdminMarksEntryStatus, getInstitutionPerformance } from '../services/admin-analytics.service';
 import { getMyProjects, getProjectJoinRequests } from '../services/student-projects.service';
 import { getStudentCertificates } from '../services/certificates.service';
 import { getWalletBalance } from '../services/wallet.service';
@@ -163,6 +163,7 @@ export const INTENT_HANDLERS: Record<string, IntentHandler> = {
   admin_students_out_now: getAdminStudentsOutNow,
   admin_hostel_occupancy: getAdminHostelOccupancy,
   admin_marks_entry_status: getAdminMarksEntryStatus,
+  admin_institution_performance: getInstitutionPerformance,
   admin_admission_status: getAdminAdmissionStatus,
   admin_dd_lookup: getAdminDDLookup,
   admin_drive_pipeline: getAdminDrivePipeline,

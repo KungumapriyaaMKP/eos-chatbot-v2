@@ -104,4 +104,5 @@ export const WIRED_INTENT_LABELS: Record<string, string> = {
   admin_po_status: 'a purchase order status',
   admin_venue_availability: 'venue/auditorium availability',
   admin_visitor_log: "today's visitor log",
+  admin_institution_performance: 'overall performance across all classes',
 };
