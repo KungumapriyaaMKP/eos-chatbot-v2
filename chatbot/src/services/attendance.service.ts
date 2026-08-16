@@ -2,6 +2,7 @@ import { prisma } from '../utils/prisma';
 import { resolveTargetStudent, notFoundReply, possessive, subjectPronoun, type ResolvedStudent } from './student-lookup.util';
 import { matchSubjectInMessage } from './subject-match.util';
 import { round2, endSentence, markdownTable, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
+import { computeAttendanceStats } from './attendance-stats.util';
 import type { HandlerContext } from '../intent/intent.types';
 
 /**
@@ -50,10 +51,7 @@ export async function getAttendance({ user, message }: HandlerContext): Promise<
     select: { status: true },
   });
 
-  const total = records.length;
-  const present = records.filter((r) => r.status === 'present').length;
-
-  if (total === 0) {
+  if (records.length === 0) {
     const scope = subject ? ` for ${subject.name}` : '';
     return {
       reply: endSentence(`I don't see any attendance records${scope} for ${target.name}`),
@@ -62,7 +60,7 @@ export async function getAttendance({ user, message }: HandlerContext): Promise<
     };
   }
 
-  const percentage = round2((present / total) * 100);
+  const { present, total, percentage } = computeAttendanceStats(records);
   const who = possessive(user, target);
   const scope = subject ? ` in ${subject.name}` : ' overall';
 
@@ -95,6 +93,7 @@ async function getPerSubjectShortage(user: HandlerContext['user'], target: Resol
   const bySubject = new Map<number, { name: string; total: number; present: number }>();
   for (const r of records) {
     if (r.subject_id === null || !r.subjects) continue;
+    if (r.status !== 'present' && r.status !== 'absent') continue; // on_duty excluded, see attendance-stats.util.ts
     const entry = bySubject.get(r.subject_id) ?? { name: r.subjects.name, total: 0, present: 0 };
     entry.total += 1;
     if (r.status === 'present') entry.present += 1;
