@@ -2,8 +2,9 @@ import { prisma } from '../utils/prisma';
 import { ROLES } from '../config/roles';
 import { resolveOwnFaculty, resolveFacultyByFreeText, type ResolvedFaculty } from './faculty-lookup.util';
 import { resolveTargetClass } from './class-match.util';
-import { joinNaturally, markdownTable, type ChatReply } from '../utils/response';
+import { joinNaturally, markdownTable, toDateOnly, type ChatReply } from '../utils/response';
 import { computeAttendanceStats } from './attendance-stats.util';
+import { matchDateInMessage } from './date-match.util';
 import type { HandlerContext } from '../intent/intent.types';
 
 /**
@@ -115,7 +116,8 @@ export async function getClassAttendance({ user, message }: HandlerContext): Pro
 
   const asksWho = WHO_PATTERN.test(message) && (ABSENT_PATTERN.test(message) || PRESENT_PATTERN.test(message));
   if (asksWho) {
-    return classRosterForToday(match, ABSENT_PATTERN.test(message) ? 'absent' : 'present');
+    const targetDate = matchDateInMessage(message) ?? todayDateOnly();
+    return classRosterForDate(match, ABSENT_PATTERN.test(message) ? 'absent' : 'present', targetDate);
   }
 
   const records = await prisma.attendance_records.findMany({
@@ -136,10 +138,22 @@ export async function getClassAttendance({ user, message }: HandlerContext): Pro
   };
 }
 
-/** Actual today's-date roster of absent/present students, by name — see the WHO_PATTERN comment above for why this exists. */
-async function classRosterForToday(match: { id: number; label: string }, status: 'absent' | 'present'): Promise<ChatReply> {
+/**
+ * Real, date-scoped roster of absent/present students, by name — see the
+ * WHO_PATTERN comment above for why this exists. `targetDate` defaults to
+ * today (from the caller) but honors any date matchDateInMessage() found
+ * ("yesterday", "last friday", "on 21 july", an ISO date like
+ * "2026-07-29", ...) — previously hardcoded to today regardless of what
+ * the message actually asked about, so "who was absent on 2026-07-29"
+ * silently answered about today instead.
+ */
+async function classRosterForDate(
+  match: { id: number; label: string },
+  status: 'absent' | 'present',
+  targetDate: Date,
+): Promise<ChatReply> {
   const records = await prisma.attendance_records.findMany({
-    where: { class_id: match.id, attendance_date: todayDateOnly(), status },
+    where: { class_id: match.id, attendance_date: targetDate, status },
     select: {
       students: {
         select: { roll_no: true, student_id_no: true, soa_applications: { select: { first_name: true, last_name: true } } },
@@ -148,12 +162,15 @@ async function classRosterForToday(match: { id: number; label: string }, status:
     orderBy: { students: { roll_no: 'asc' } },
   });
 
+  const isToday = targetDate.getTime() === todayDateOnly().getTime();
+  const whenLabel = isToday ? 'today' : `on ${toDateOnly(targetDate)}`;
+
   if (records.length === 0) {
-    // Ambiguous on purpose: could mean "no class held today" (weekend/
-    // holiday) or "attendance for today just hasn't been marked yet" —
+    // Ambiguous on purpose: could mean "no class held that day" (weekend/
+    // holiday) or "attendance for that day just hasn't been marked" —
     // honest either way, doesn't guess which.
     return {
-      reply: `No students recorded as ${status} today for ${match.label} — attendance for today may not be marked yet, or there's no class scheduled.`,
+      reply: `No students recorded as ${status} ${whenLabel} for ${match.label} — attendance may not be marked for that day, or there was no class scheduled.`,
       intent: 'faculty_class_attendance',
       confidence: 1,
       data: [],
@@ -162,7 +179,7 @@ async function classRosterForToday(match: { id: number; label: string }, status:
 
   const names = records.map((r) => studentLabel(r.students));
   return {
-    reply: `${records.length} student(s) ${status} today in ${match.label}: ${joinNaturally(names)}.`,
+    reply: `${records.length} student(s) ${status} ${whenLabel} in ${match.label}: ${joinNaturally(names)}.`,
     intent: 'faculty_class_attendance',
     confidence: 1,
     data: names,
