@@ -1,6 +1,6 @@
 import { prisma } from '../utils/prisma';
 import { resolveTargetClass } from './class-match.util';
-import { matchSubjectInMessage, matchExamTypeInMessage } from './subject-match.util';
+import { matchSubjectInMessage, matchExamTypeInMessage, matchSemesterInMessage } from './subject-match.util';
 import { round2, joinNaturally, markdownTable, type ChatReply } from '../utils/response';
 import { computeAttendanceStats } from './attendance-stats.util';
 import type { HandlerContext } from '../intent/intent.types';
@@ -62,19 +62,23 @@ async function attendancePerformance(match: { id: number; label: string }): Prom
 
 async function marksPerformance(message: string, match: { id: number; label: string }): Promise<ChatReply> {
   const [subject, examType] = await Promise.all([matchSubjectInMessage(message, match.id), matchExamTypeInMessage(message)]);
+  const semester = matchSemesterInMessage(message);
 
   const rows = await prisma.exam_marks.findMany({
     where: {
       exam_subject_mapping: {
         class_id: match.id,
         ...(subject && { subject_id: subject.id }),
-        ...(examType && { exams: { exam_type_id: examType.id } }),
+        exams: {
+          ...(examType && { exam_type_id: examType.id }),
+          ...(semester !== null && { semester }),
+        },
       },
     },
     select: { marks_obtained: true, max_marks: true },
   });
 
-  const scope = [subject?.name, examType?.name].filter(Boolean).join(', ');
+  const scope = [subject?.name, examType?.name, semester !== null ? `semester ${semester}` : null].filter(Boolean).join(', ');
   const scopeLabel = scope ? ` (${scope})` : '';
 
   const scored = rows.filter(
