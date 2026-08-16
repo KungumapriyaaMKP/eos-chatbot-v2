@@ -1,8 +1,9 @@
 import { prisma } from '../utils/prisma';
 import { resolveTargetStudent, notFoundReply, possessive, subjectPronoun, type ResolvedStudent } from './student-lookup.util';
 import { matchSubjectInMessage } from './subject-match.util';
-import { round2, endSentence, markdownTable, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
+import { round2, toDateOnly, endSentence, markdownTable, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
 import { computeAttendanceStats } from './attendance-stats.util';
+import { matchDateInMessage } from './date-match.util';
 import type { HandlerContext } from '../intent/intent.types';
 
 /**
@@ -46,6 +47,16 @@ export async function getAttendance({ user, message }: HandlerContext): Promise<
     return getPerSubjectShortage(user, target);
   }
 
+  // Real gap found live: "what was my attendance on 2026-08-13" returned
+  // the all-time aggregate PERCENTAGE, completely ignoring the specific
+  // date named — a single day's attendance is a STATUS (present/absent/
+  // on_duty), not a percentage; averaging it into the whole history
+  // answers a different question than the one actually asked.
+  const targetDate = matchDateInMessage(message);
+  if (targetDate) {
+    return attendanceStatusForDate(user, target, subject, targetDate);
+  }
+
   const records = await prisma.attendance_records.findMany({
     where: { student_id: target.id, ...(subject && { subject_id: subject.id }) },
     select: { status: true },
@@ -74,6 +85,49 @@ export async function getAttendance({ user, message }: HandlerContext): Promise<
     confidence: 1,
     data: { student_id: target.id, subject: subject?.name ?? null, total, present, percentage },
   };
+}
+
+const STATUS_LABEL: Record<string, string> = { present: 'Present', absent: 'Absent', on_duty: 'On Duty' };
+
+/** A single day's real attendance status(es) — see the date-gap comment in getAttendance above. */
+async function attendanceStatusForDate(
+  user: HandlerContext['user'],
+  target: ResolvedStudent,
+  subject: { id: number; name: string } | null,
+  targetDate: Date,
+): Promise<ChatReply> {
+  const records = await prisma.attendance_records.findMany({
+    where: { student_id: target.id, attendance_date: targetDate, ...(subject && { subject_id: subject.id }) },
+    select: { status: true, subjects: { select: { name: true } } },
+  });
+
+  const who = possessive(user, target);
+  const dateLabel = toDateOnly(targetDate);
+
+  if (records.length === 0) {
+    const scope = subject ? ` for ${subject.name}` : '';
+    return {
+      reply: `No attendance recorded${scope} for ${dateLabel} — that day may not have been marked, or there was no class scheduled.`,
+      intent: 'get_attendance',
+      confidence: 1,
+      data: [],
+    };
+  }
+
+  if (records.length === 1 && !records[0].subjects) {
+    return {
+      reply: `${who} attendance on ${dateLabel} was: ${STATUS_LABEL[records[0].status] ?? records[0].status}.`,
+      intent: 'get_attendance',
+      confidence: 1,
+      data: records,
+    };
+  }
+
+  const table = markdownTable(
+    ['Subject', 'Status'],
+    records.map((r) => [r.subjects?.name ?? 'Overall', STATUS_LABEL[r.status] ?? r.status]),
+  );
+  return { reply: `${who} attendance on ${dateLabel}:\n\n${table}`, intent: 'get_attendance', confidence: 1, data: records };
 }
 
 async function getPerSubjectShortage(user: HandlerContext['user'], target: ResolvedStudent): Promise<ChatReply> {

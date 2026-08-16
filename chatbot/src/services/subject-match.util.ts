@@ -126,8 +126,13 @@ export interface MatchedExamType {
  * this institution's own naming convention (I before II).
  */
 const EXAM_TYPE_PATTERNS: Array<{ pattern: RegExp; nameContains: string }> = [
-  { pattern: /\bia\s?1\b|\bfirst internal\b|\binternal (assessment |exam )?1\b/i, nameContains: 'i' },
-  { pattern: /\bia\s?2\b|\bsecond internal\b|\b(last|latest|final) internal\b|\binternal (assessment |exam )?2\b/i, nameContains: 'ii' },
+  // CIA = "Continuous Internal Assessment" — an extremely common alternate
+  // name for the same Internal Assessment exams at Indian engineering
+  // colleges (this dataset's own training examples literally use "CIA 2
+  // mark"), but nothing here recognized it as equivalent to IA/"internal"
+  // before this fix — a real gap found live.
+  { pattern: /\b(ia|cia)\s?1\b|\bfirst internal\b|\b(internal|cia)\s?(assessment |exam )?1\b/i, nameContains: 'i' },
+  { pattern: /\b(ia|cia)\s?2\b|\bsecond internal\b|\b(last|latest|final) internal\b|\b(internal|cia)\s?(assessment |exam )?2\b/i, nameContains: 'ii' },
   { pattern: /\b(semester|university|sem|final) exam(ination)?\b/i, nameContains: 'semester' },
   { pattern: /\bmodel exam(ination)?\b/i, nameContains: 'model' },
 ];
