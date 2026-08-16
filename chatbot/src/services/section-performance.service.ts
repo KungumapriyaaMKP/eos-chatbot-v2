@@ -2,6 +2,7 @@ import { prisma } from '../utils/prisma';
 import { resolveTargetClass } from './class-match.util';
 import { matchSubjectInMessage, matchExamTypeInMessage } from './subject-match.util';
 import { round2, joinNaturally, markdownTable, type ChatReply } from '../utils/response';
+import { computeAttendanceStats } from './attendance-stats.util';
 import type { HandlerContext } from '../intent/intent.types';
 
 /**
@@ -49,14 +50,13 @@ async function attendancePerformance(match: { id: number; label: string }): Prom
     return { reply: `No attendance has been recorded yet for ${match.label}.`, intent: 'section_performance', confidence: 1 };
   }
 
-  const present = records.filter((r) => r.status === 'present').length;
-  const percentage = round2((present / records.length) * 100);
+  const { present, total, percentage } = computeAttendanceStats(records);
 
   return {
-    reply: `${match.label} average attendance: ${percentage}% (${present} present out of ${records.length} records).`,
+    reply: `${match.label} average attendance: ${percentage}% (${present} present out of ${total} records).`,
     intent: 'section_performance',
     confidence: 1,
-    data: { class: match.label, total: records.length, present, percentage },
+    data: { class: match.label, total, present, percentage },
   };
 }
 
