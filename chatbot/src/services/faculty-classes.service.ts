@@ -69,7 +69,35 @@ export async function getFacultyClasses({ user, message }: HandlerContext): Prom
   return { reply: `${heading}:\n\n${table}`, intent: 'faculty_my_classes', confidence: 1, data: { teaching, mentoring } };
 }
 
-/** faculty_class_attendance — faculty/admin: attendance summary for a specific class. */
+/**
+ * Real gap found live: "who is absent today in my class" / "who's present
+ * today" was answered with an all-time aggregate PERCENTAGE ("87.91%
+ * overall") instead of an actual LIST OF STUDENT NAMES for today —
+ * attendance_records.attendance_date is a real, indexed column
+ * (idx_attendance_class_date) that nothing here ever consulted; every
+ * query aggregated the class's entire attendance history with no date
+ * scoping at all. "who" is asking for a roster, not a number.
+ */
+const WHO_PATTERN = /\bwho('?s| is| are| was| were)?\b/i;
+const ABSENT_PATTERN = /\babsent(ee)?s?\b/i;
+const PRESENT_PATTERN = /\bpresent\b/i;
+
+function studentLabel(row: {
+  roll_no: string | null;
+  student_id_no: string;
+  soa_applications: { first_name: string; last_name: string | null } | null;
+}): string {
+  const name = row.soa_applications ? [row.soa_applications.first_name, row.soa_applications.last_name].filter(Boolean).join(' ') : '';
+  return name || row.roll_no || row.student_id_no;
+}
+
+/** Midnight-to-midnight UTC boundary for "today" — matches the plain `@db.Date` column (no time component to worry about). */
+function todayDateOnly(): Date {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+}
+
+/** faculty_class_attendance — faculty/admin: attendance summary for a specific class, or a same-day roster of who's absent/present when the message actually asks "who". */
 export async function getClassAttendance({ user, message }: HandlerContext): Promise<ChatReply> {
   const { match, candidates } = await resolveTargetClass(user, message);
 
@@ -83,6 +111,11 @@ export async function getClassAttendance({ user, message }: HandlerContext): Pro
       intent: 'faculty_class_attendance',
       confidence: 1,
     };
+  }
+
+  const asksWho = WHO_PATTERN.test(message) && (ABSENT_PATTERN.test(message) || PRESENT_PATTERN.test(message));
+  if (asksWho) {
+    return classRosterForToday(match, ABSENT_PATTERN.test(message) ? 'absent' : 'present');
   }
 
   const records = await prisma.attendance_records.findMany({
@@ -100,6 +133,39 @@ export async function getClassAttendance({ user, message }: HandlerContext): Pro
     intent: 'faculty_class_attendance',
     confidence: 1,
     data: { class: match.label, total, present, percentage },
+  };
+}
+
+/** Actual today's-date roster of absent/present students, by name — see the WHO_PATTERN comment above for why this exists. */
+async function classRosterForToday(match: { id: number; label: string }, status: 'absent' | 'present'): Promise<ChatReply> {
+  const records = await prisma.attendance_records.findMany({
+    where: { class_id: match.id, attendance_date: todayDateOnly(), status },
+    select: {
+      students: {
+        select: { roll_no: true, student_id_no: true, soa_applications: { select: { first_name: true, last_name: true } } },
+      },
+    },
+    orderBy: { students: { roll_no: 'asc' } },
+  });
+
+  if (records.length === 0) {
+    // Ambiguous on purpose: could mean "no class held today" (weekend/
+    // holiday) or "attendance for today just hasn't been marked yet" —
+    // honest either way, doesn't guess which.
+    return {
+      reply: `No students recorded as ${status} today for ${match.label} — attendance for today may not be marked yet, or there's no class scheduled.`,
+      intent: 'faculty_class_attendance',
+      confidence: 1,
+      data: [],
+    };
+  }
+
+  const names = records.map((r) => studentLabel(r.students));
+  return {
+    reply: `${records.length} student(s) ${status} today in ${match.label}: ${joinNaturally(names)}.`,
+    intent: 'faculty_class_attendance',
+    confidence: 1,
+    data: names,
   };
 }
 
