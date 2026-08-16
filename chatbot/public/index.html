@@ -834,15 +834,25 @@
     var password = document.getElementById('password').value;
 
     try {
-      var res = await fetch('/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email, password: password }),
-      });
+      var res;
+      try {
+        res = await fetch('/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email, password: password }),
+        });
+      } catch (networkErr) {
+        // A raw browser exception here ("Failed to fetch", "NetworkError
+        // when attempting to fetch resource") is never something to show a
+        // real user — converted to a clean, professional message before it
+        // can ever reach the outer catch below.
+        throw new Error("We couldn't reach the login service. Please check your connection and try again.");
+      }
+
       var body = await res.json();
 
       if (!res.ok || !body.success) {
-        throw new Error(body.message || 'Login failed');
+        throw new Error(body.message || 'Login failed. Please try again.');
       }
 
       state.token = body.accessToken;
@@ -852,7 +862,7 @@
 
       showChat();
     } catch (err) {
-      loginError.textContent = err.message || 'Something went wrong.';
+      loginError.textContent = err.message || 'Something went wrong. Please try again.';
       loginError.style.display = 'block';
     } finally {
       loginBtn.disabled = false;
@@ -878,8 +888,9 @@
     updateSendState();
     addTyping();
 
+    var res;
     try {
-      var res = await fetch('/chat', {
+      res = await fetch('/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -887,6 +898,19 @@
         },
         body: JSON.stringify({ message: text }),
       });
+    } catch (networkErr) {
+      // Real gap found live: this used to say "Could not reach the chatbot
+      // server. Is it running?" — a raw, technical, backend-implementation-
+      // exposing message with zero business reading it that way. A real
+      // user doesn't know or care what "the server" is; they just typed a
+      // question and got told to go check if a computer is turned on.
+      removeTyping();
+      addBubble('bot', "Sorry, I'm having trouble connecting right now. Please try again in a moment.", { isError: true });
+      messageInput.focus();
+      return;
+    }
+
+    try {
       var body = await res.json();
       removeTyping();
 
@@ -897,14 +921,14 @@
       }
 
       if (!res.ok || body.success === false) {
-        addBubble('bot', body.message || 'Something went wrong.', { isError: true });
+        addBubble('bot', body.message || 'Something went wrong. Please try again.', { isError: true });
         return;
       }
 
       addBubble('bot', body.reply);
     } catch (err) {
       removeTyping();
-      addBubble('bot', 'Could not reach the chatbot server. Is it running?', { isError: true });
+      addBubble('bot', "Sorry, I'm having trouble connecting right now. Please try again in a moment.", { isError: true });
     } finally {
       messageInput.focus();
     }
