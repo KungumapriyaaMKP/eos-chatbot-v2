@@ -27,11 +27,17 @@ export async function getMarks({ user, message }: HandlerContext): Promise<ChatR
     return { reply: notFoundReply(user, result, 'their marks', 'get_marks'), intent: 'get_marks', confidence: 1 };
   }
 
-  const [subject, examType] = await Promise.all([
+  const [subject, examType, currentClass] = await Promise.all([
     matchSubjectInMessage(message, target.class_id),
     matchExamTypeInMessage(message),
+    // Only needed to resolve "previous"/"last semester" (relative to the
+    // student's OWN current semester) — see matchSemesterInMessage's
+    // comment. A cheap single indexed lookup, worth it so "my previous
+    // semester marks" doesn't just silently ignore "previous" the way it
+    // did before this fix.
+    target.class_id ? prisma.classes.findUnique({ where: { id: target.class_id }, select: { current_semester: true } }) : null,
   ]);
-  const semester = matchSemesterInMessage(message);
+  const semester = matchSemesterInMessage(message, currentClass?.current_semester);
   const publishedOnly = user.role === ROLES.STUDENT || user.role === ROLES.PARENT;
 
   const rows = await prisma.exam_marks.findMany({

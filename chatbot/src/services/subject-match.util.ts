@@ -216,16 +216,31 @@ const SEMESTER_ORDINAL_WORDS: Record<string, number> = {
 };
 
 /**
+ * "previous"/"last semester" — a real gap found live: unlike "first
+ * semester"/"semester 3" (an absolute number, resolvable from the text
+ * alone), "previous"/"last" is RELATIVE to the caller's own current
+ * semester, which the message itself never states — resolving it needs
+ * the caller's actual current_semester as context. Deliberately excludes
+ * "final"/"latest" (already claimed by EXAM_TYPE_PATTERNS above for "final
+ * internal" meaning Internal Assessment II — reusing them here for
+ * semester would be genuinely ambiguous between the two meanings).
+ */
+const RELATIVE_PREVIOUS_SEMESTER_PATTERN = /\b(previous|last)\s+sem(ester)?\b/i;
+
+/**
  * Deliberately requires "semester"/"sem" directly adjacent to the number/
  * ordinal (not just present anywhere in the message) — the whole point is
  * to avoid a bare ordinal used in an unrelated sense ("my second attempt",
  * "third subject") being mistaken for a semester reference. Handles both
  * orders ("semester 3" / "3rd semester") and both numeric ("3", "3rd") and
- * word ("third") forms. Returns null (meaning: don't filter by semester)
- * when nothing matches — same "no confident match beats no match" stance
- * as matchSubjectInMessage/matchExamTypeInMessage.
+ * word ("third") forms, plus "previous"/"last semester" relative to
+ * `currentSemester` (the caller's own current_semester, when the caller
+ * passes it — omitted, this form is simply not resolved, same as any
+ * other unmatched phrasing). Returns null (meaning: don't filter by
+ * semester) when nothing matches — same "no confident match beats no
+ * match" stance as matchSubjectInMessage/matchExamTypeInMessage.
  */
-export function matchSemesterInMessage(message: string): number | null {
+export function matchSemesterInMessage(message: string, currentSemester?: number | null): number | null {
   const lower = message.toLowerCase();
 
   const numeric =
@@ -238,6 +253,10 @@ export function matchSemesterInMessage(message: string): number | null {
   for (const [word, n] of Object.entries(SEMESTER_ORDINAL_WORDS)) {
     const pattern = new RegExp(`\\b${word}\\s+(?:semester|sem)\\b|\\b(?:semester|sem)\\s+${word}\\b`, 'i');
     if (pattern.test(lower)) return n;
+  }
+
+  if (currentSemester != null && currentSemester > 1 && RELATIVE_PREVIOUS_SEMESTER_PATTERN.test(lower)) {
+    return currentSemester - 1;
   }
 
   return null;
