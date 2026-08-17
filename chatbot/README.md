@@ -19,7 +19,7 @@ see [Learning pipeline](#learning-pipeline)).
 ```
 User question
    → SBERT embedding (multilingual MiniLM-L12, in-process, offline)
-   → cosine similarity against 2,647 trained examples across 96 intents
+   → cosine similarity against 2,663 trained examples across 96 intents
    → best match below confidence threshold? → "I couldn't understand your
      question. Please rephrase it."
    → (low-confidence only) confidence-gated LLM reranking via local Ollama
@@ -235,7 +235,7 @@ This runs two steps (`train:parse` then `train:embed`):
 1. Parses `EOS_Intent_Training_Dataset_English_Only.docx` (expected one
    directory above `chatbot/` by default — pass an explicit path:
    `npx tsx src/training/parse-dataset.ts <path>`) into `src/embeddings/intents.json`.
-2. Embeds all 2,647 example utterances with SBERT into `src/embeddings/embeddings.json`.
+2. Embeds all 2,663 example utterances with SBERT into `src/embeddings/embeddings.json`.
 
 **The SBERT ONNX model weights are auto-downloaded on first run, NOT
 committed to the repo.** This changed when the classifier moved to the
@@ -343,7 +343,7 @@ workflow these support.
 
 ## Intent coverage
 
-The classifier is trained on **96 intents / 2,647 examples** as of the
+The classifier is trained on **96 intents / 2,663 examples** as of the
 latest dataset pass (`scripts/rebuild-dataset-v4.ts`) — held-out accuracy on
 a freshly-composed 1,000-question benchmark is **86.1% (878/1,020)**, up
 from a 70.8% baseline; see `chatbot-1000-question-test-report.pdf` for the
