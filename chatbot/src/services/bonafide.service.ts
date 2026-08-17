@@ -9,6 +9,8 @@ function formatStatus(status: string): string {
       return 'Issued';
     case 'rejected':
       return 'Rejected';
+    case 'faculty_approved':
+      return 'Approved by faculty — awaiting issuance';
     default:
       return 'Pending';
   }

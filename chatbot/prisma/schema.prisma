@@ -1859,6 +1859,7 @@ enum attendance_status_enum {
 
 enum bonafide_status_enum {
   pending
+  faculty_approved
   issued
   rejected
 }
