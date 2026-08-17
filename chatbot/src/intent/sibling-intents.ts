@@ -28,4 +28,16 @@
 export const SIBLING_INTENTS: Record<string, string[]> = {
   get_leave_status: ['faculty_leave_status'],
   faculty_leave_status: ['get_leave_status'],
+  // "who teaches dbms" (faculty/hod/admin/coe asking institution-wide) vs
+  // "which faculty teaches me dbms" (student/parent asking about their own
+  // class) are the same underlying question with near-identical phrasing —
+  // get_faculty_by_subject and get_mentor's subject-teacher branch answer
+  // it from each side. Real gap found live: activating
+  // get_faculty_by_subject's training examples pulled some
+  // personally-framed ("teaches me") student phrasing away from get_mentor
+  // toward it, and get_faculty_by_subject's roles (admin/hod/faculty/coe)
+  // don't include student/parent — without this pairing that would have
+  // been a flat, wrong permission denial instead of the real answer.
+  get_faculty_by_subject: ['get_mentor'],
+  get_mentor: ['get_faculty_by_subject'],
 };

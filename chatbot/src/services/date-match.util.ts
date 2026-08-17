@@ -61,6 +61,17 @@ export function matchDateInMessage(message: string, now: Date = new Date()): Dat
     return today;
   }
 
+  // "tomorrow" — every prior caller here (attendance) only ever looked
+  // backward, so this was never needed until get_holidays needed to answer
+  // "is tomorrow a holiday" / "do I have class tomorrow" directly instead
+  // of just dumping the next 8 upcoming holidays and making the user scan
+  // for tomorrow's date themselves.
+  if (/\btomorrow\b|\btmrw\b/.test(lower)) {
+    const d = new Date(today);
+    d.setUTCDate(d.getUTCDate() + 1);
+    return d;
+  }
+
   for (let dow = 0; dow < WEEKDAY_NAMES.length; dow++) {
     if (new RegExp(`\\blast ${WEEKDAY_NAMES[dow]}\\b`).test(lower)) {
       return mostRecentWeekdayBefore(today, dow);

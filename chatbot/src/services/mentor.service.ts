@@ -5,6 +5,22 @@ import { NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 
 /**
+ * Real gap found live: "is my mentor on leave" was being misclassified to
+ * get_leave_status entirely (a student asking about their MENTOR's
+ * availability got back their OWN leave applications instead — wrong
+ * person, actively misleading). Once training data anchors this phrasing
+ * to get_mentor instead, the handler still needs to answer it honestly:
+ * there is no faculty-attendance/leave table this chatbot is scoped to read
+ * for ANY role other than the faculty member themselves, so rather than
+ * silently ignoring the "on leave" framing and just printing the normal
+ * identity card (which could misleadingly read as "yes, reachable"), this
+ * detects that framing and says plainly that leave/availability isn't
+ * something this chatbot can check, right alongside the mentor's contact
+ * details so the student still has a real next step.
+ */
+const MENTOR_AVAILABILITY_PATTERN = /\b(on leave|(is|are)\s+\w*\s*(available|absent|present|in college|in today)|leave today|available today)\b/i;
+
+/**
  * get_mentor — student (own) / parent (own child) / admin (any student).
  * Reads class_mentors, the same table EOS-backend's own
  * announcements/faculty-classes scoping already relies on elsewhere — the
@@ -37,9 +53,11 @@ export async function getMentor({ user, message }: HandlerContext): Promise<Chat
     };
   }
 
+  const askingAvailability = MENTOR_AVAILABILITY_PATTERN.test(message);
+
   const subject = await matchSubjectInMessage(message, target.class_id);
   if (subject) {
-    return getSubjectFaculty(user, target, subject);
+    return getSubjectFaculty(user, target, subject, askingAvailability);
   }
 
   const mapping = await prisma.class_mentors.findFirst({
@@ -67,12 +85,20 @@ export async function getMentor({ user, message }: HandlerContext): Promise<Chat
 
   const reply =
     `${who} class mentor is ${f.first_name} ${f.last_name}, ${f.designation} (${f.departments.name})` +
-    (f.users?.email ? `. You can reach them at ${f.users.email}.` : '.');
+    (f.users?.email ? `. You can reach them at ${f.users.email}.` : '.') +
+    (askingAvailability
+      ? " I don't have visibility into faculty leave or attendance records, so I can't confirm if they're in today — reaching out directly is the fastest way to check."
+      : '');
 
   return { reply, intent: 'get_mentor', confidence: 1, data: mapping };
 }
 
-async function getSubjectFaculty(user: HandlerContext['user'], target: ResolvedStudent, subject: { id: number; name: string }): Promise<ChatReply> {
+async function getSubjectFaculty(
+  user: HandlerContext['user'],
+  target: ResolvedStudent,
+  subject: { id: number; name: string },
+  askingAvailability = false,
+): Promise<ChatReply> {
   const mapping = await prisma.faculty_subject_class_mapping.findFirst({
     where: { class_id: target.class_id!, subject_id: subject.id },
     orderBy: { academic_year: 'desc' },
@@ -95,7 +121,10 @@ async function getSubjectFaculty(user: HandlerContext['user'], target: ResolvedS
   const f = mapping.faculty;
   const reply =
     `${subject.name} for ${who === 'Your' ? 'your' : who} class is taught by ${f.first_name} ${f.last_name}, ${f.designation} (${f.departments.name})` +
-    (f.users?.email ? `. You can reach them at ${f.users.email}.` : '.');
+    (f.users?.email ? `. You can reach them at ${f.users.email}.` : '.') +
+    (askingAvailability
+      ? " I don't have visibility into faculty leave or attendance records, so I can't confirm if they're in today — reaching out directly is the fastest way to check."
+      : '');
 
   return { reply, intent: 'get_mentor', confidence: 1, data: mapping };
 }

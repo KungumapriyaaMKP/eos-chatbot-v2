@@ -1,6 +1,7 @@
 import { prisma } from '../utils/prisma';
 import { ROLES } from '../config/roles';
-import { toDateOnly, markdownTable, type ChatReply } from '../utils/response';
+import { toDateOnly, dayOfWeekName, markdownTable, type ChatReply } from '../utils/response';
+import { matchDateInMessage } from './date-match.util';
 import type { HandlerContext } from '../intent/intent.types';
 
 const RESULT_LIMIT = 8;
@@ -17,8 +18,15 @@ const RESULT_LIMIT = 8;
  * single batch to scope by, so they see the institution-wide upcoming list
  * instead, deduplicated by title+date since the same public holiday is
  * usually entered once per batch's calendar.
+ *
+ * Real gap found live: "do i have class tomorrow" / "is tomorrow a
+ * holiday" always got the SAME generic "next 8 upcoming holidays" table
+ * regardless of what was asked — the caller had to scan the table
+ * themselves to see if tomorrow's date happened to appear in it. When the
+ * message names a specific day (today/tomorrow/a weekday/an explicit
+ * date), this now answers that day directly instead.
  */
-export async function getHolidays({ user }: HandlerContext): Promise<ChatReply> {
+export async function getHolidays({ user, message }: HandlerContext): Promise<ChatReply> {
   const today = new Date(new Date().toISOString().slice(0, 10));
 
   let academicCalendarIds: number[] | undefined;
@@ -33,6 +41,11 @@ export async function getHolidays({ user }: HandlerContext): Promise<ChatReply> 
       select: { id: true },
     });
     academicCalendarIds = calendars.map((c) => c.id);
+  }
+
+  const askedDate = matchDateInMessage(message, new Date());
+  if (askedDate) {
+    return specificDateReply(askedDate, today, academicCalendarIds);
   }
 
   const events = await prisma.calendar_events.findMany({
@@ -63,6 +76,53 @@ export async function getHolidays({ user }: HandlerContext): Promise<ChatReply> 
   const table = markdownTable(['Holiday', 'Date'], unique.map((e) => [e.title, toDateOnly(e.event_date)]));
 
   return { reply: `Upcoming holidays:\n\n${table}`, intent: 'get_holidays', confidence: 1, data: unique };
+}
+
+/** Relative label for the asked-about date, only for "today"/"tomorrow" — anything further out just gets its date. */
+function relativeDayLabel(askedDate: Date, today: Date): string {
+  const diffDays = Math.round((askedDate.getTime() - today.getTime()) / 86_400_000);
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Tomorrow';
+  return dayOfWeekName(askedDate.getUTCDay());
+}
+
+async function specificDateReply(askedDate: Date, today: Date, academicCalendarIds: number[] | undefined): Promise<ChatReply> {
+  const event = await prisma.calendar_events.findFirst({
+    where: {
+      event_type: 'holiday',
+      event_date: askedDate,
+      ...(academicCalendarIds && { academic_calendar_id: { in: academicCalendarIds } }),
+    },
+    select: { title: true },
+  });
+
+  const label = relativeDayLabel(askedDate, today);
+  const dateStr = toDateOnly(askedDate);
+  const dow = askedDate.getUTCDay();
+  const isWeekend = dow === 0 || dow === 6;
+
+  if (event) {
+    return {
+      reply: `Yes — ${label} (${dateStr}) is a holiday: ${event.title}. No classes that day.`,
+      intent: 'get_holidays',
+      confidence: 1,
+      data: event,
+    };
+  }
+
+  if (isWeekend) {
+    return {
+      reply: `${label} (${dateStr}) is a ${dayOfWeekName(dow)} — no classes scheduled. It's not marked as a holiday on the academic calendar either way, since weekends usually aren't classes anyway.`,
+      intent: 'get_holidays',
+      confidence: 1,
+    };
+  }
+
+  return {
+    reply: `No — ${label} (${dateStr}) isn't marked as a holiday on the academic calendar, so regular classes are expected.`,
+    intent: 'get_holidays',
+    confidence: 1,
+  };
 }
 
 async function resolveBatchAndSemester(
