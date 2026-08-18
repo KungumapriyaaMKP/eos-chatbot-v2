@@ -124,8 +124,9 @@ Install everything with:
    hand-edit these numbers)
 -------------------------------------------------------------------------
   Intents trained:            97
-  Training examples:          2,771
-  Held-out accuracy:          see chatbot-1000-question-test-report.pdf —
+  Training examples:          2,871
+  Held-out accuracy:          97.4% (993/1,020), see
+                               chatbot-1000-question-test-report.pdf —
                                regenerate with:
                                npx tsx scripts/generate-1000-questions.ts
 

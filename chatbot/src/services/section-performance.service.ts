@@ -16,6 +16,11 @@ const ASSUMED_PASS_PERCENT = 40;
 
 const ATTENDANCE_PATTERN = /\battend/i;
 const FAILED_PATTERN = /\bfail(ed|ure)?\b/i;
+// Real gap found live: "top scorer in my class for physics" landed here
+// (correctly, per this intent's own description) but the handler only
+// ever computed the numeric highest percentage, never WHO got it -- an
+// honest but incomplete answer to a question that's asking for a name.
+const TOP_SCORER_PATTERN = /\btop scorer\b|\bwho (scored|got|has) the highest\b|\bbest (student|performer)\b|\btopper\b/i;
 
 /**
  * section_performance — faculty (own assigned/mentored classes) / admin
@@ -63,6 +68,7 @@ async function attendancePerformance(match: { id: number; label: string }): Prom
 async function marksPerformance(message: string, match: { id: number; label: string }): Promise<ChatReply> {
   const [subject, examType] = await Promise.all([matchSubjectInMessage(message, match.id), matchExamTypeInMessage(message)]);
   const semester = matchSemesterInMessage(message);
+  const wantsTopScorer = TOP_SCORER_PATTERN.test(message);
 
   const rows = await prisma.exam_marks.findMany({
     where: {
@@ -75,7 +81,13 @@ async function marksPerformance(message: string, match: { id: number; label: str
         },
       },
     },
-    select: { marks_obtained: true, max_marks: true },
+    select: {
+      marks_obtained: true,
+      max_marks: true,
+      // Only fetched when actually asked "who's the top scorer" -- every
+      // other framing here only ever needed the numbers, not names.
+      ...(wantsTopScorer && { students: { select: { soa_applications: { select: { first_name: true, last_name: true } } } } }),
+    },
   });
 
   const scope = [subject?.name, examType?.name, semester !== null ? `semester ${semester}` : null].filter(Boolean).join(', ');
@@ -94,12 +106,22 @@ async function marksPerformance(message: string, match: { id: number; label: str
   const highest = round2(Math.max(...percentages));
   const lowest = round2(Math.min(...percentages));
 
+  let topScorerName: string | null = null;
+  if (wantsTopScorer) {
+    const topIndex = percentages.indexOf(highest);
+    const topRow = scored[topIndex] as (typeof scored)[number] & {
+      students?: { soa_applications: { first_name: string; last_name: string | null } | null };
+    };
+    const soa = topRow.students?.soa_applications;
+    topScorerName = soa ? [soa.first_name, soa.last_name].filter(Boolean).join(' ') : null;
+  }
+
   const table = markdownTable(
     ['Metric', 'Value'],
     [
       ['Students with marks entered', scored.length],
       ['Average', `${average}%`],
-      ['Highest', `${highest}%`],
+      ['Highest', `${highest}%${topScorerName ? ` — ${topScorerName}` : ''}`],
       ['Lowest', `${lowest}%`],
     ],
   );
@@ -113,6 +135,6 @@ async function marksPerformance(message: string, match: { id: number; label: str
     reply: `${heading}\n\n${table}${failedNote}`,
     intent: 'section_performance',
     confidence: 1,
-    data: { class: match.label, subject: subject?.name ?? null, examType: examType?.name ?? null, average, highest, lowest, count: scored.length },
+    data: { class: match.label, subject: subject?.name ?? null, examType: examType?.name ?? null, average, highest, lowest, topScorerName, count: scored.length },
   };
 }
