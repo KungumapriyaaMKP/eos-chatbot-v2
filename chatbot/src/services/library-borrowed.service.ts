@@ -43,10 +43,45 @@ export async function getBorrowedBooks({ user }: HandlerContext): Promise<ChatRe
   return { reply: `You have ${records.length} book(s) currently borrowed:\n\n${table}`, intent: 'get_borrowed_books', confidence: 1, data: records };
 }
 
-const STOP_WORDS = /\b(search|book|books|library|find|for|me|a|an|the|please|pls|show|is|there|available|do|you|have|any|catalog|catalogue)\b/gi;
+const STOP_WORDS = /\b(search|book|books|library|find|for|me|a|an|the|please|pls|show|is|there|available|do|does|you|have|any|catalog|catalogue)\b/gi;
+
+/**
+ * Only a LEADING "on"/"about"/"regarding" ("book **on** thermodynamics",
+ * "notes **about** DBMS") -- deliberately not added to STOP_WORDS itself,
+ * since those words can legitimately appear mid-title too ("A Treatise
+ * **on** the Theory..."), and stripping every occurrence would risk
+ * corrupting an exact-substring title match the same way "of"/"in" would.
+ * A LEADING preposition introducing the real subject is unambiguous
+ * either way, so trimming just that one occurrence is safe.
+ */
+const LEADING_PREPOSITION = /^(on|about|regarding)\s+/i;
 
 function extractSearchTerm(message: string): string {
-  return message.replace(STOP_WORDS, ' ').replace(/\s+/g, ' ').trim();
+  const stripped = message.replace(STOP_WORDS, ' ').replace(/\s+/g, ' ').trim();
+  return stripped.replace(LEADING_PREPOSITION, '').trim();
+}
+
+/**
+ * Real gap found live: "give me the list of books in the library" (a
+ * generic "browse the catalogue" question, no specific title/author
+ * named) left "give list of in" after extractSearchTerm's stopword
+ * strip -- none of "give"/"list"/"of"/"in" are on STOP_WORDS -- and that
+ * leftover was searched for literally, returning a confident-looking but
+ * nonsensical "No books found matching 'give list of in'."
+ *
+ * Deliberately NOT fixed by adding "of"/"in" to STOP_WORDS -- both are
+ * genuine substrings of real book titles ("Internet **of** Things",
+ * "Theory **of** Computation"), so stripping them would break an actual
+ * title search that happens to be built around a preposition. Instead,
+ * this checks whether EVERY word left after extraction is a generic
+ * connector word and nothing else -- a real title search always leaves
+ * at least one substantial content word behind, so this only catches the
+ * genuinely-empty "just filler words" case.
+ */
+const CONNECTOR_ONLY_WORDS = new Set(['give', 'list', 'of', 'in', 'all', 'what', 'tell', 'can', 'which', 'get', 'need', 'want', 'to', 'me']);
+function isGenericBrowseResidual(term: string): boolean {
+  const words = term.toLowerCase().split(/\s+/).filter(Boolean);
+  return words.length > 0 && words.every((w) => CONNECTOR_ONLY_WORDS.has(w));
 }
 
 /**
@@ -58,7 +93,7 @@ function extractSearchTerm(message: string): string {
 export async function searchBooks({ message }: HandlerContext): Promise<ChatReply> {
   const searchTerm = extractSearchTerm(message);
 
-  if (!searchTerm || searchTerm.length < 2) {
+  if (!searchTerm || searchTerm.length < 2 || isGenericBrowseResidual(searchTerm)) {
     return {
       reply: 'Please tell me what book you want to search for. Example: "Search for Data Structures"',
       intent: 'search_books',
