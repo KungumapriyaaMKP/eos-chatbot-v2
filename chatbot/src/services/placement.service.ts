@@ -1,5 +1,5 @@
 import { prisma } from '../utils/prisma';
-import { resolveTargetStudent, notFoundReply, possessive } from './student-lookup.util';
+import { resolveTargetStudent, notFoundReply, possessive, subjectPronoun } from './student-lookup.util';
 import { fuzzyFindBest } from '../utils/fuzzy';
 import { toDateOnly, markdownTable, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
@@ -83,7 +83,10 @@ export async function getDriveApplications({ user, message }: HandlerContext): P
   const who = possessive(user, target);
 
   if (applications.length === 0) {
-    return { reply: `${who} hasn't applied to any placement drives yet.`, intent: 'get_drive_applications', confidence: 1 };
+    // subjectPronoun, not possessive -- same fix as leave-status.service.ts:
+    // "hasn't" needs a subject pronoun ("You haven't applied"), not a
+    // possessive adjective ("Your hasn't applied", the real live bug).
+    return { reply: `${subjectPronoun(user)} haven't applied to any placement drives yet.`, intent: 'get_drive_applications', confidence: 1 };
   }
 
   const table = markdownTable(
@@ -151,7 +154,8 @@ export async function getProfileLinks({ user, message }: HandlerContext): Promis
 
   const who = possessive(user, result.student);
   if (!profile) {
-    return { reply: `${who} hasn't added any placement profile links yet.`, intent: 'get_profile_links', confidence: 1 };
+    // subjectPronoun, not possessive -- same "Your hasn't ..." grammar bug fix as elsewhere.
+    return { reply: `${subjectPronoun(user)} haven't added any placement profile links yet.`, intent: 'get_profile_links', confidence: 1 };
   }
 
   const rows: Array<[string, string]> = [

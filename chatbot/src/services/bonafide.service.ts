@@ -1,5 +1,5 @@
 import { prisma } from '../utils/prisma';
-import { resolveTargetStudent, notFoundReply, possessive } from './student-lookup.util';
+import { resolveTargetStudent, notFoundReply, possessive, subjectPronoun } from './student-lookup.util';
 import { toDateOnly, endSentence, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 
@@ -37,7 +37,10 @@ export async function getBonafideStatus({ user, message }: HandlerContext): Prom
   const who = possessive(user, target);
 
   if (requests.length === 0) {
-    return { reply: `${who} hasn't requested a bonafide certificate.`, intent: 'get_bonafide_status', confidence: 1 };
+    // subjectPronoun, not possessive -- "hasn't" needs a subject pronoun
+    // ("You haven't requested"), not a possessive adjective (the same
+    // "Your hasn't ..." bug found live in leave-status/placement/od).
+    return { reply: `${subjectPronoun(user)} haven't requested a bonafide certificate.`, intent: 'get_bonafide_status', confidence: 1 };
   }
 
   const latest = requests[0];

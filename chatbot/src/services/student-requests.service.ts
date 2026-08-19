@@ -1,5 +1,5 @@
 import { prisma } from '../utils/prisma';
-import { resolveTargetStudent, notFoundReply, possessive } from './student-lookup.util';
+import { resolveTargetStudent, notFoundReply, possessive, subjectPronoun } from './student-lookup.util';
 import { toDateOnly, markdownTable, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 import { logger } from '../utils/logger';
@@ -32,7 +32,8 @@ export async function getODStatus({ user, message }: HandlerContext): Promise<Ch
 
   const who = possessive(user, target);
   if (approvals.length === 0) {
-    return { reply: `${who} hasn't applied for On-Duty leave.`, intent: 'get_od_status', confidence: 1 };
+    // subjectPronoun, not possessive -- same "Your hasn't"->"You haven't" fix as leave-status/placement.service.ts.
+    return { reply: `${subjectPronoun(user)} haven't applied for On-Duty leave.`, intent: 'get_od_status', confidence: 1 };
   }
 
   const table = markdownTable(

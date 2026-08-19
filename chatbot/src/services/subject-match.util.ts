@@ -131,10 +131,17 @@ const EXAM_TYPE_PATTERNS: Array<{ pattern: RegExp; nameContains: string }> = [
   // colleges (this dataset's own training examples literally use "CIA 2
   // mark"), but nothing here recognized it as equivalent to IA/"internal"
   // before this fix — a real gap found live.
-  { pattern: /\b(ia|cia)\s?1\b|\bfirst internal\b|\b(internal|cia)\s?(assessment |exam )?1\b/i, nameContains: 'i' },
-  { pattern: /\b(ia|cia)\s?2\b|\bsecond internal\b|\b(last|latest|final) internal\b|\b(internal|cia)\s?(assessment |exam )?2\b/i, nameContains: 'ii' },
-  { pattern: /\b(semester|university|sem|final) exam(ination)?\b/i, nameContains: 'semester' },
-  { pattern: /\bmodel exam(ination)?\b/i, nameContains: 'model' },
+  //
+  // Every "internal"/"cia"/"assessment"/"exam" token below tolerates an
+  // optional trailing "s" (internal**s**, assessment**s**, exam**s**) —
+  // real gap found live: "marks in internal**s** 1" (a very natural plural
+  // phrasing) silently matched NOTHING, so the exam-type filter was
+  // dropped entirely and every exam type's marks were returned instead of
+  // just Internal Assessment I.
+  { pattern: /\b(ia|cia)s?\s?1\b|\bfirst internals?\b|\b(internal|cia)s?\s?(assessments?\s|exams?\s)?1\b/i, nameContains: 'i' },
+  { pattern: /\b(ia|cia)s?\s?2\b|\bsecond internals?\b|\b(last|latest|final)\s+internals?\b|\b(internal|cia)s?\s?(assessments?\s|exams?\s)?2\b/i, nameContains: 'ii' },
+  { pattern: /\b(semester|university|sem|final)\s?exams?(ination)?\b/i, nameContains: 'semester' },
+  { pattern: /\bmodel\s?exams?(ination)?\b/i, nameContains: 'model' },
 ];
 
 /**

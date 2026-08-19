@@ -55,7 +55,10 @@ export async function getLeaveStatus({ user, message }: HandlerContext): Promise
   const who = possessive(user, target);
 
   if (applications.length === 0) {
-    return { reply: `${who} hasn't filed any leave applications.`, intent: 'get_leave_status', confidence: 1 };
+    // subjectPronoun, not possessive -- "hasn't"/"haven't" needs a subject
+    // pronoun ("You haven't filed"), not a possessive adjective (the real,
+    // live bug this replaces: "Your hasn't filed any leave applications").
+    return { reply: `${subjectPronoun(user)} haven't filed any leave applications.`, intent: 'get_leave_status', confidence: 1 };
   }
 
   const approvedApps = applications.filter((a) => a.status === 'hod_approved' || a.status === 'faculty_approved');

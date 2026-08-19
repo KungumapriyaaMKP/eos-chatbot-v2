@@ -67,6 +67,17 @@ const STOPWORDS = new Set([
   // every candidate and ties resolve to whichever the DB happened to
   // return first.
   'elective', 'electives', 'core', 'lab', 'laboratory',
+  // "internal" (as in "Internal Assessment 1") vs "Internet" (as in a real
+  // subject "Internet of Things") — real bug found live: Levenshtein
+  // similarity between the two 8-letter words is 0.75 (differ only in
+  // their last two letters), clearing the 0.72 fuzzy threshold. "give me
+  // my internal assessment 1 marks" was silently narrowing to ONLY the
+  // "Internet of Things" subject instead of showing every subject's IA1,
+  // purely because the exam-type wording itself happened to fuzzy-collide
+  // with an unrelated subject's name. "internal"/"internals" is exam
+  // terminology, never a genuine subject-name word, so excluding it here
+  // costs nothing.
+  'internal', 'internals',
 ]);
 
 /**

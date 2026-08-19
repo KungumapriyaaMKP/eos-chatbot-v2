@@ -1,5 +1,5 @@
 import { prisma } from '../utils/prisma';
-import { resolveTargetStudent, notFoundReply, possessive } from './student-lookup.util';
+import { resolveTargetStudent, notFoundReply, possessive, subjectPronoun } from './student-lookup.util';
 import { formatCurrency, toDateOnly, markdownTable, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 
@@ -21,7 +21,8 @@ export async function getFeeBreakup({ user, message }: HandlerContext): Promise<
 
   const who = possessive(user, target);
   if (demands.length === 0) {
-    return { reply: `${who} has no fee structure on record.`, intent: 'get_fee_breakup', confidence: 1 };
+    // subjectPronoun, not possessive -- "Your has no ..." is broken the same way as the "Your hasn't ..." bugs fixed elsewhere.
+    return { reply: `${subjectPronoun(user)} have no fee structure on record.`, intent: 'get_fee_breakup', confidence: 1 };
   }
 
   const rows = demands.flatMap((d) => d.fee_structures.fee_structure_items.map((item) => [item.demand_categories.name, formatCurrency(Number(item.amount))]));
@@ -45,7 +46,8 @@ export async function getDDStatus({ user, message }: HandlerContext): Promise<Ch
 
   const who = possessive(user, target);
   if (payments.length === 0) {
-    return { reply: `${who} has no demand draft payments on record.`, intent: 'get_dd_status', confidence: 1 };
+    // subjectPronoun, not possessive -- same "Your has no ..." grammar bug fix as above.
+    return { reply: `${subjectPronoun(user)} have no demand draft payments on record.`, intent: 'get_dd_status', confidence: 1 };
   }
 
   const table = markdownTable(

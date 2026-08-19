@@ -36,6 +36,7 @@ export const WIRED_INTENT_LABELS: Record<string, string> = {
   get_my_subjects: 'your subjects',
   get_mentor: 'your class mentor',
   get_holidays: 'upcoming holidays',
+  get_upcoming_events: 'upcoming campus events',
   library_hours: 'library hours',
   get_my_bus: 'your bus and route details',
   get_bus_location: "your bus's live location",

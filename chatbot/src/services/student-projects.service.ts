@@ -1,5 +1,5 @@
 import { prisma } from '../utils/prisma';
-import { resolveTargetStudent, notFoundReply, possessive } from './student-lookup.util';
+import { resolveTargetStudent, notFoundReply, possessive, subjectPronoun } from './student-lookup.util';
 import { markdownTable, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 
@@ -17,7 +17,9 @@ export async function getMyProjects({ user, message }: HandlerContext): Promise<
 
   const who = possessive(user, target);
   if (projects.length === 0) {
-    return { reply: `${who} isn't listed on any projects yet.`, intent: 'get_my_projects', confidence: 1 };
+    // subjectPronoun, not possessive -- "Your isn't listed" is broken the same way; "aren't" since
+    // subjectPronoun returns You/They, both of which take "aren't" not "isn't".
+    return { reply: `${subjectPronoun(user)} aren't listed on any projects yet.`, intent: 'get_my_projects', confidence: 1 };
   }
 
   const table = markdownTable(

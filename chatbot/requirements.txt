@@ -123,8 +123,8 @@ Install everything with:
 6. Current scale (informational — regenerate via the tools below, don't
    hand-edit these numbers)
 -------------------------------------------------------------------------
-  Intents trained:            97
-  Training examples:          2,871
+  Intents trained:            98
+  Training examples:          2,914
   Held-out accuracy:          97.4% (993/1,020), see
                                chatbot-1000-question-test-report.pdf —
                                regenerate with:

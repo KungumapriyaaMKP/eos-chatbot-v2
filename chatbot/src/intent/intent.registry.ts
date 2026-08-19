@@ -9,7 +9,7 @@ import { getAnnouncements } from '../services/announcements.service';
 import { getSubjects } from '../services/subjects.service';
 import { getAssignments } from '../services/assignments.service';
 import { getMentor } from '../services/mentor.service';
-import { getHolidays } from '../services/holidays.service';
+import { getHolidays, getUpcomingEvents } from '../services/holidays.service';
 import { getLibraryHours } from '../services/library.service';
 import { getFacultyClasses, getClassAttendance, getSectionStudents } from '../services/faculty-classes.service';
 import { getFacultyBySubject } from '../services/faculty-by-subject.service';
@@ -104,6 +104,7 @@ export const INTENT_HANDLERS: Record<string, IntentHandler> = {
   get_assignments: getAssignments,
   get_mentor: getMentor,
   get_holidays: getHolidays,
+  get_upcoming_events: getUpcomingEvents,
   library_hours: getLibraryHours,
   get_borrowed_books: getBorrowedBooks,
   search_books: searchBooks,

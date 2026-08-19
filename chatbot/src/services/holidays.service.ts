@@ -146,3 +146,98 @@ async function resolveBatchAndSemester(
 
   return null;
 }
+
+/**
+ * get_upcoming_events — student/parent/faculty/hod/admin. Real gap found
+ * live: calendar_event_type_enum has TWO values, 'holiday' and 'event',
+ * but nothing anywhere read the 'event' half at all -- "upcoming events" /
+ * "events happening today" (a completely legitimate, real-data-backed
+ * question -- seminars, fests, deadlines entered on the same academic
+ * calendar as holidays) fell through to whatever unrelated intent
+ * happened to share a word ("today") with it, in one live case landing on
+ * faculty_class_attendance -- a student asking about campus events got an
+ * RBAC denial. Mirrors get_holidays' structure exactly (same batch/
+ * semester scoping, same date-aware direct-answer behavior), just
+ * event_type='event' instead of 'holiday', and doesn't carry get_holidays'
+ * "no classes that day" framing since an event doesn't cancel classes the
+ * way a holiday does.
+ */
+export async function getUpcomingEvents({ user, message }: HandlerContext): Promise<ChatReply> {
+  const today = new Date(new Date().toISOString().slice(0, 10));
+
+  let academicCalendarIds: number[] | undefined;
+  const batchAndSemester = await resolveBatchAndSemester(user);
+  if (batchAndSemester) {
+    const calendars = await prisma.academic_calendars.findMany({
+      where: {
+        batch_id: batchAndSemester.batch_id,
+        ...(batchAndSemester.semester != null && { semester: batchAndSemester.semester }),
+      },
+      select: { id: true },
+    });
+    academicCalendarIds = calendars.map((c) => c.id);
+  }
+
+  const askedDate = matchDateInMessage(message, new Date());
+  if (askedDate) {
+    return specificEventDateReply(askedDate, today, academicCalendarIds);
+  }
+
+  const events = await prisma.calendar_events.findMany({
+    where: {
+      event_type: 'event',
+      event_date: { gte: today },
+      ...(academicCalendarIds && { academic_calendar_id: { in: academicCalendarIds } }),
+    },
+    orderBy: { event_date: 'asc' },
+    select: { event_date: true, title: true },
+    take: RESULT_LIMIT * 3,
+  });
+
+  if (events.length === 0) {
+    return { reply: 'No upcoming events found on the academic calendar.', intent: 'get_upcoming_events', confidence: 1 };
+  }
+
+  const seen = new Set<string>();
+  const unique: typeof events = [];
+  for (const e of events) {
+    const key = `${e.title}|${toDateOnly(e.event_date)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(e);
+    if (unique.length >= RESULT_LIMIT) break;
+  }
+
+  const table = markdownTable(['Event', 'Date'], unique.map((e) => [e.title, toDateOnly(e.event_date)]));
+  return { reply: `Upcoming events:\n\n${table}`, intent: 'get_upcoming_events', confidence: 1, data: unique };
+}
+
+async function specificEventDateReply(askedDate: Date, today: Date, academicCalendarIds: number[] | undefined): Promise<ChatReply> {
+  const matches = await prisma.calendar_events.findMany({
+    where: {
+      event_type: 'event',
+      event_date: askedDate,
+      ...(academicCalendarIds && { academic_calendar_id: { in: academicCalendarIds } }),
+    },
+    select: { title: true },
+  });
+
+  const label = relativeDayLabel(askedDate, today);
+  const dateStr = toDateOnly(askedDate);
+
+  if (matches.length === 0) {
+    return {
+      reply: `No events are on record for ${label} (${dateStr}).`,
+      intent: 'get_upcoming_events',
+      confidence: 1,
+    };
+  }
+
+  const titles = matches.map((m) => m.title).join(', ');
+  return {
+    reply: `${label} (${dateStr}): ${titles}.`,
+    intent: 'get_upcoming_events',
+    confidence: 1,
+    data: matches,
+  };
+}

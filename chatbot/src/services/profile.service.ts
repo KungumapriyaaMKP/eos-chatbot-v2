@@ -95,6 +95,7 @@ async function selfProfile(user: HandlerContext['user']): Promise<ChatReply> {
         roll_no: true,
         register_no: true,
         student_type: true,
+        dayscholar_mode: true,
         date_of_birth: true,
         courses: { select: { name: true } },
         batches: { select: { name: true } },
@@ -126,6 +127,17 @@ async function selfProfile(user: HandlerContext['user']): Promise<ChatReply> {
         // dob" would get a correctly-classified reply with the one thing
         // they actually asked for silently missing.
         ['Date of Birth', student.date_of_birth ? toDateOnly(student.date_of_birth) : 'N/A'],
+        // Same gap, found live a second time: "am I hosteller or
+        // dayscholar" was a legitimate, correctly-classified question with
+        // no matching row in this table at all -- student_type WAS
+        // already being fetched (select above) but never displayed.
+        // dayscholar_mode only applies to dayscholars (how they commute),
+        // so it's shown only then rather than as a confusing "N/A" for
+        // every hosteller.
+        ['Student Type', student.student_type === 'hosteller' ? 'Hosteller' : 'Day Scholar'],
+        ...(student.student_type === 'dayscholar' && student.dayscholar_mode
+          ? ([['Commute Mode', student.dayscholar_mode === 'transport' ? 'College Transport' : 'Own Vehicle']] as [string, string][])
+          : []),
       ],
     );
 

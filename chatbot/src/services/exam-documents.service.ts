@@ -1,5 +1,5 @@
 import { prisma } from '../utils/prisma';
-import { resolveTargetStudent, notFoundReply, possessive } from './student-lookup.util';
+import { resolveTargetStudent, notFoundReply, possessive, subjectPronoun } from './student-lookup.util';
 import { markdownTable, endSentence, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 
@@ -102,7 +102,8 @@ export async function getRevaluationStatus({ user, message }: HandlerContext): P
 
   const who = possessive(user, target);
   if (requests.length === 0) {
-    return { reply: `${who} hasn't requested a revaluation.`, intent: 'get_revaluation_status', confidence: 1 };
+    // subjectPronoun, not possessive -- same "Your hasn't ..." grammar bug fix as elsewhere.
+    return { reply: `${subjectPronoun(user)} haven't requested a revaluation.`, intent: 'get_revaluation_status', confidence: 1 };
   }
 
   const table = markdownTable(

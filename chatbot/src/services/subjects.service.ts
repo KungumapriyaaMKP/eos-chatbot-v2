@@ -1,12 +1,20 @@
 import { prisma } from '../utils/prisma';
 import { resolveTargetStudent, notFoundReply, possessive } from './student-lookup.util';
+import { matchSemesterInMessage } from './subject-match.util';
 import { endSentence, markdownTable, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 
 /**
  * get_my_subjects — student (own) / parent (own child) / admin (any
  * student, looked up in the message). Reads class_subjects for the
- * student's class + current semester.
+ * student's class + current semester by default.
+ *
+ * Real gap found live: "what subject do i have in previous semester"
+ * always showed the CURRENT semester's subjects regardless -- the
+ * semester filter was hardcoded to `current_semester`, so "previous"/
+ * "semester 3"/etc in the message was silently ignored entirely (the same
+ * class of gap marks.service.ts already had a fix for -- this handler
+ * just hadn't been wired up to matchSemesterInMessage yet).
  */
 export async function getSubjects({ user, message }: HandlerContext): Promise<ChatReply> {
   const result = await resolveTargetStudent(user, message);
@@ -29,14 +37,17 @@ export async function getSubjects({ user, message }: HandlerContext): Promise<Ch
   }
 
   const klass = await prisma.classes.findUnique({ where: { id: target.class_id }, select: { current_semester: true } });
+  const semester = matchSemesterInMessage(message, klass?.current_semester) ?? klass?.current_semester ?? null;
+  const isCurrentSemester = semester != null && semester === klass?.current_semester;
 
   const rows = await prisma.class_subjects.findMany({
-    where: { class_id: target.class_id, ...(klass?.current_semester != null && { semester: klass.current_semester }) },
+    where: { class_id: target.class_id, ...(semester != null && { semester }) },
     select: { subjects: { select: { name: true, subject_code: true, credits: true } } },
   });
 
   if (rows.length === 0) {
-    return { reply: `No subjects found for ${target.name}'s class.`, intent: 'get_my_subjects', confidence: 1 };
+    const scope = semester != null ? ` for semester ${semester}` : '';
+    return { reply: `No subjects found for ${target.name}'s class${scope}.`, intent: 'get_my_subjects', confidence: 1 };
   }
 
   const who = possessive(user, target);
@@ -44,6 +55,7 @@ export async function getSubjects({ user, message }: HandlerContext): Promise<Ch
     ['Subject', 'Code', 'Credits'],
     rows.map((r) => [r.subjects.name, r.subjects.subject_code, r.subjects.credits ?? '—']),
   );
+  const scopeLabel = isCurrentSemester || semester == null ? ' this semester' : ` (semester ${semester})`;
 
-  return { reply: `${who} subjects this semester:\n\n${table}`, intent: 'get_my_subjects', confidence: 1, data: rows };
+  return { reply: `${who} subjects${scopeLabel}:\n\n${table}`, intent: 'get_my_subjects', confidence: 1, data: rows };
 }

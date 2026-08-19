@@ -1,5 +1,5 @@
 import { prisma } from '../utils/prisma';
-import { resolveTargetStudent, notFoundReply, possessive } from './student-lookup.util';
+import { resolveTargetStudent, notFoundReply, possessive, subjectPronoun } from './student-lookup.util';
 import { formatCurrency, toDateOnly, markdownTable, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
 import type { HandlerContext } from '../intent/intent.types';
 
@@ -24,7 +24,8 @@ export async function getWalletBalance({ user, message }: HandlerContext): Promi
 
   const who = possessive(user, target);
   if (!wallet) {
-    return { reply: `${who} doesn't have a campus wallet set up.`, intent: 'get_wallet_balance', confidence: 1 };
+    // subjectPronoun, not possessive -- same "Your hasn't ..." family of grammar bugs fixed elsewhere.
+    return { reply: `${subjectPronoun(user)} don't have a campus wallet set up.`, intent: 'get_wallet_balance', confidence: 1 };
   }
 
   const reply = `${who} campus wallet balance: ${formatCurrency(Number(wallet.balance))}.`;

@@ -108,7 +108,15 @@ export async function emergencyOrDistress({ user, match }: HandlerContext): Prom
 }
 
 const OOS_REPLIES: Record<string, string> = {
-  oos_cgpa: "I can't compute CGPA from these records yet, but I can show your subject-wise marks instead. Want me to?",
+  // Real gap found live: this used to end with "Want me to?" -- a
+  // rhetorical yes/no question with no actual mechanism behind it (the
+  // session's pendingIntent follow-up only fires when the NEXT message
+  // fails classification outright, not when a plain "yes" successfully
+  // classifies as something else, which it usually does). A student who
+  // replied "yes" got the generic greeting instead, a dead-end loop.
+  // Rephrased as a direct, immediately-actionable suggestion instead of a
+  // question the bot can't actually follow up on.
+  oos_cgpa: "I can't compute CGPA from these records yet. Try asking for your marks by subject or by semester instead.",
   oos_mess_menu: "I don't have the mess or canteen menu. Please check with the hostel or mess office.",
   oos_wifi: 'For WiFi or network issues, please contact IT support.',
   oos_syllabus: "I don't have syllabus documents, but I can show your lesson plans' subjects if that helps.",
