@@ -6,15 +6,16 @@ plain English, detects intent completely offline with Sentence-BERT
 the answer from the **existing EOS database**, and replies in plain English.
 
 No external AI API, no API key, no data ever leaves the machine. A local
-LLM (Llama 3.2 3B via [Ollama](https://ollama.com)) is used for two narrow,
-fact-checked, fully-offline jobs — confidence-gated intent reranking and
-reply paraphrasing — never to originate a fact; both are optional and fall
-back safely if Ollama isn't running. See [LLM-assisted
-reranking/paraphrasing](#llm-assisted-reranking-and-paraphrasing) below. No
-new EOS/ERP data tables, no new users, no duplicated business logic — see
-[Architecture](#architecture) for exactly what's reused vs. new (the
-chatbot does own 3 small tables of its own for query logging/analytics,
-see [Learning pipeline](#learning-pipeline)).
+LLM (Llama 3.2 3B via [Ollama](https://ollama.com)) is used for three narrow,
+fact-checked, fully-offline jobs — confidence-gated intent reranking, reply
+paraphrasing, and chat-conversation title generation — never to originate a
+fact; all three are optional and fall back safely if Ollama isn't running.
+See [LLM-assisted reranking/paraphrasing](#llm-assisted-reranking-and-paraphrasing)
+below. No new EOS/ERP data tables, no new users, no duplicated business
+logic — see [Architecture](#architecture) for exactly what's reused vs. new
+(the chatbot does own 5 small tables of its own — 3 for query logging/
+analytics, see [Learning pipeline](#learning-pipeline), and 2 for a real
+per-user chat history/"Recents" sidebar, see [Chat history](#chat-history)).
 
 ```
 User question
@@ -297,27 +298,49 @@ classifier and permission checks working without curl.
 
 ```json
 // request
-{ "message": "Show my attendance" }
+{ "message": "Show my attendance", "conversationId": 17 }
 
 // response
 {
   "reply": "Your current attendance is 91%. You have attended 82 out of 90 classes.",
   "intent": "get_attendance",
   "confidence": 0.93,
-  "data": { "total": 90, "present": 82, "percentage": 91 }
+  "data": { "total": 90, "present": 82, "percentage": 91 },
+  "conversationId": 17
 }
 ```
+
+`conversationId` is optional in the request — omit it (or send `null`) to
+start a brand-new conversation; the response always carries the id of
+whichever conversation this exchange landed in (a freshly-created one if
+none was given), which the caller should send back on the *next* message
+in the same thread. See [Chat history](#chat-history) below.
 
 Denied and low-confidence cases still return `200` with a conversational
 `reply` (this is a chat turn, not a REST resource) — only malformed requests
 (missing `message`) or genuine server errors use the shared error envelope
-(`success: false`, `errorCode`, ...).
+(`success: false`, `errorCode`, ...). Every one of these cases is still
+persisted to chat history exactly like a fully-answered turn — a "Recents"
+list is only honest if it shows the whole conversation the user actually saw.
 
 ### `GET /health`
 
 ```json
 { "status": "ok", "service": "eos-chatbot" }
 ```
+
+### Chat history endpoints (all require `Authorization: Bearer`)
+
+See [Chat history](#chat-history) below for the tables backing these.
+
+- **`GET /chat/conversations`** -> `{ conversations: [{ id, title, updatedAt }, ...] }`,
+  most recently active first, self-scoped to the caller — the data for a
+  "Recents" sidebar.
+- **`GET /chat/conversations/:id`** -> `{ id, messages: [{ role: 'user'|'bot', message, intent, confidence, createdAt }, ...] }`
+  in chronological order. Returns `404` both for an id that doesn't exist
+  and for one that exists but belongs to a different user — deliberately
+  indistinguishable, so this endpoint can never be used to probe which
+  conversation ids exist.
 
 ### Learning pipeline endpoints (all require `Authorization: Bearer`)
 
@@ -515,6 +538,39 @@ self-improvement loop:
   state is now the only path in.
 - `GET /learning/stats` and `POST /learning/feedback` expose this data to
   a caller; see `src/routes/learning.routes.ts`.
+
+## Chat history
+
+Two more chatbot-owned tables (`chat_conversations`, `chat_messages` — same
+plain-`CREATE TABLE`, no-migration-framework style as the learning-pipeline
+tables above) back a real, per-user "Recents" sidebar in `public/index.html`
+— deliberately **separate** from `query_logs`: that table is anonymized-by-
+purpose classifier analytics (no reply text, no notion of a "conversation",
+feeds the learning pipeline above) — this pair is the actual conversation
+transcript a user can reopen, the same way ChatGPT/Claude's own history works.
+
+- Every `/chat` exchange is stored against the caller's own `user_id`
+  (`src/services/chat-history.service.ts`) — including denied and
+  low-confidence turns, not just fully-answered ones (see the `POST /chat`
+  docs above). A conversation is created on the first message of a new
+  thread and titled from that message; every message after it (as long as
+  the client keeps sending the same `conversationId`) appends to the same
+  thread instead of starting a new one.
+- **Titling**: a short (3-6 word) title is generated from the conversation's
+  own first message via the same local Ollama instance already used for
+  reranking/paraphrasing — same fully-offline posture, and just as narrow a
+  job: summarizing a sentence the user themselves typed into a label, never
+  inventing a new fact. Falls back to a plain truncation on any
+  failure/timeout — a title is cosmetic, never worth a hard Ollama
+  dependency (`generateConversationTitle` in `chat-history.service.ts`).
+- Every read is self-scoped by the JWT exactly like every data handler
+  elsewhere in this codebase — `GET /chat/conversations/:id` returns `404`
+  identically for an id that doesn't exist and one that exists but belongs
+  to someone else, never a distinguishing "yes but it's not yours" response.
+- The frontend (`public/index.html`) keeps at most one active
+  `conversationId` in memory at a time; "New chat" clears it (the next
+  message starts a fresh thread) and clicking a sidebar item loads that
+  conversation's full transcript and makes it the active one.
 
 ## Testing without a live database
 

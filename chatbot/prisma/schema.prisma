@@ -2136,3 +2136,35 @@ model model_performance {
 
   @@index([training_date], map: "idx_model_perf_date")
 }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Chat History (per-user, user-facing -- NOT the same thing as
+// query_logs above, which is anonymized-by-purpose classifier analytics
+// with no reply text and no notion of a "conversation". These two tables
+// back a real "Recents" sidebar in the chat UI: each conversation is one
+// thread a user can reopen, titled from its own first message.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+model chat_conversations {
+  id            Int            @id @default(autoincrement())
+  user_id       Int
+  title         String         @db.VarChar(120)
+  created_at    DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime       @default(now()) @db.Timestamptz(6)
+  chat_messages chat_messages[]
+
+  @@index([user_id, updated_at], map: "idx_chat_conversations_user")
+}
+
+model chat_messages {
+  id                 Int                @id @default(autoincrement())
+  conversation_id    Int
+  role               String             @db.VarChar(10) // 'user' | 'bot'
+  message            String             @db.Text
+  intent             String?            @db.VarChar(100) // only set on 'bot' rows
+  confidence         Decimal?           @db.Decimal(4, 3) // only set on 'bot' rows
+  created_at         DateTime           @default(now()) @db.Timestamptz(6)
+  chat_conversations chat_conversations @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+
+  @@index([conversation_id, created_at], map: "idx_chat_messages_conversation")
+}

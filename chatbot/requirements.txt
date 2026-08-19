@@ -22,11 +22,13 @@ requirements.txt.
 ---------------------
 - PostgreSQL — the SAME database EOS-backend already uses (Supabase or
   local copy). This app only ever runs read queries against it; it never
-  runs migrations. Exceptions: 3 chatbot-owned tables it DOES write to —
+  runs migrations. Exceptions: 5 chatbot-owned tables it DOES write to —
   query_logs, training_examples, model_performance (the learning/analytics
-  pipeline) — must exist in that same database (plain CREATE TABLE, no
-  migration framework used; see git history for the DDL if they're
-  missing).
+  pipeline) and chat_conversations, chat_messages (per-user chat history /
+  "Recents" sidebar, see README.md "Chat history") — must exist in that
+  same database (plain CREATE TABLE, no migration framework used; see
+  scripts/create-chat-history-tables.ts and git history for the DDL if
+  they're missing).
 
 - Ollama (NEW — a real, separate local system service, not optional
   boilerplate) — https://ollama.com. Used for two things, both of which

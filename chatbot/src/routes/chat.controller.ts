@@ -10,7 +10,49 @@ import { logger } from '../utils/logger';
 import { pickLowConfidenceMessage, joinNaturally, NO_PERMISSION_MESSAGE, type ChatReply } from '../utils/response';
 import { paraphraseReply } from '../reply/paraphraser';
 import type { HandlerContext, IntentMatch } from '../intent/intent.types';
+import type { JwtPayload } from '../auth/jwt-payload.interface';
 import { logQuery } from '../services/learning/query-logger.service';
+import { createConversation, appendToConversation } from '../services/chat-history.service';
+
+/**
+ * Persists one exchange to the caller's own chat history (see
+ * chat-history.service.ts) and responds with the reply plus the
+ * conversation id the frontend should send on the NEXT message in this
+ * same thread. Every response path in chatHandler below goes through
+ * this ONE function — including the low-confidence and RBAC-denial
+ * paths, which used to `res.json()` directly and skip logging/history
+ * entirely — a "Recents" list is only honest if it shows the WHOLE
+ * conversation the user actually saw, not just the successfully-answered
+ * turns.
+ *
+ * History persistence failing (DB hiccup, etc.) must never break the
+ * actual chat reply — caught and logged, conversationId just comes back
+ * null in that case, same "never let an internal feature take down the
+ * primary one" posture as query_logs/paraphraser elsewhere in this file.
+ */
+async function respondWithHistory(
+  res: Response,
+  user: JwtPayload,
+  message: string,
+  requestedConversationId: number | undefined,
+  reply: ChatReply,
+): Promise<void> {
+  let conversationId: number | null = null;
+  try {
+    if (requestedConversationId) {
+      const appended = await appendToConversation(requestedConversationId, user.sub, message, reply.reply, reply.intent, reply.confidence);
+      conversationId = appended
+        ? requestedConversationId
+        : await createConversation(user.sub, message, reply.reply, reply.intent, reply.confidence);
+    } else {
+      conversationId = await createConversation(user.sub, message, reply.reply, reply.intent, reply.confidence);
+    }
+  } catch (err) {
+    logger.error('chat', `Failed to persist chat history: ${err}`);
+  }
+
+  res.status(200).json({ ...reply, conversationId });
+}
 
 /**
  * POST /chat — the entire pipeline described in the brief:
@@ -29,6 +71,10 @@ export async function chatHandler(req: Request, res: Response, next: NextFunctio
     if (typeof message !== 'string' || message.trim().length === 0) {
       throw AppError.badRequest('message is required');
     }
+    // Which thread this message continues, if any — omitted/invalid means
+    // "start a new conversation" (see respondWithHistory above).
+    const requestedConversationId =
+      typeof req.body?.conversationId === 'number' && Number.isInteger(req.body.conversationId) ? req.body.conversationId : undefined;
 
     const user = req.user!; // verifyJwt guarantees this is set
 
@@ -69,7 +115,7 @@ export async function chatHandler(req: Request, res: Response, next: NextFunctio
           intent: null,
           confidence: match.confidence,
         };
-        res.status(200).json(reply);
+        await respondWithHistory(res, user, message, requestedConversationId, reply);
         return;
       }
     }
@@ -93,7 +139,7 @@ export async function chatHandler(req: Request, res: Response, next: NextFunctio
       } else {
         logger.warn('chat', `RBAC denied: user=${user.sub} role=${user.role} intent=${match.intent}`);
         const reply: ChatReply = { reply: NO_PERMISSION_MESSAGE, intent: match.intent, confidence: match.confidence };
-        res.status(200).json(reply);
+        await respondWithHistory(res, user, message, requestedConversationId, reply);
         return;
       }
     }
@@ -118,7 +164,7 @@ export async function chatHandler(req: Request, res: Response, next: NextFunctio
       confidence: match.confidence || undefined,
     }).catch(() => {}); // Ignore errors
 
-    res.status(200).json(reply);
+    await respondWithHistory(res, user, message, requestedConversationId, reply);
   } catch (err) {
     next(err);
   }
