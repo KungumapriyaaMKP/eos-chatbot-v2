@@ -126,7 +126,7 @@ Install everything with:
    hand-edit these numbers)
 -------------------------------------------------------------------------
   Intents trained:            98
-  Training examples:          2,914
+  Training examples:          2,919
   Held-out accuracy:          97.4% (993/1,020), see
                                chatbot-1000-question-test-report.pdf —
                                regenerate with:

@@ -30,7 +30,20 @@ export function createRateLimit(opts: { max: number; keyFn: (req: Request) => st
     const count = (hits.get(key) || 0) + 1;
     hits.set(key, count);
     if (count > max) {
-      return res.status(429).json({ error: 'Rate limit exceeded' });
+      // Same envelope shape as errorHandler.middleware.ts (success/
+      // statusCode/errorCode/message) -- this used to be a bare
+      // { error: 'Rate limit exceeded' }, a different shape from every
+      // other error response in this app, so the frontend's shared
+      // `body.message` handling couldn't surface it as anything but the
+      // generic "Something went wrong" fallback.
+      return res.status(429).json({
+        success: false,
+        statusCode: 429,
+        errorCode: 'RATE_LIMITED',
+        message: "You're sending messages a bit too quickly. Please wait a moment and try again.",
+        timestamp: new Date().toISOString(),
+        path: req.originalUrl,
+      });
     }
     next();
   };

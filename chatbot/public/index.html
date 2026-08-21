@@ -411,6 +411,37 @@
     font-weight: 700;
     text-shadow: 0 1px 10px rgba(0,0,0,0.9), 0 1px 3px rgba(0,0,0,1);
   }
+  /* Shown while switching to a past conversation (loading) or if that
+     switch fails/times out — same centered-over-#chat-body positioning
+     as #empty-state, but a plain status line rather than the app's own
+     branded hero, and never left up silently: every path either replaces
+     it with the real messages or with a clear, actionable error. */
+  #conversation-status {
+    display: none;
+    position: absolute;
+    inset: 0;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 10px;
+    padding: 24px;
+    text-align: center;
+  }
+  #conversation-status.visible { display: flex; }
+  #conversation-status .status-text {
+    font-size: 14px;
+    color: var(--text);
+    text-shadow: 0 1px 10px rgba(0,0,0,0.9), 0 1px 3px rgba(0,0,0,1);
+  }
+  #conversation-status .status-retry {
+    padding: 7px 16px;
+    border: 1px solid var(--border);
+    background: rgba(0,0,0,0.72);
+    color: var(--text);
+    font-size: 13px;
+    border-radius: 0;
+  }
+  #conversation-status .status-retry:hover { background: rgba(255,255,255,0.1); }
   .quick-actions {
     display: flex;
     flex-wrap: wrap;
@@ -630,6 +661,7 @@
           <p>Ask about your attendance, marks, timetable, fees, and more.</p>
           <div class="quick-actions" id="quick-actions"></div>
         </div>
+        <div id="conversation-status"></div>
         <div id="messages" class="content-width"></div>
       </div>
 
@@ -653,6 +685,36 @@
 
 <script>
 (function () {
+  // ---------- Shared network helper ----------
+  // Real gap found live: every fetch() in this file used to have NO
+  // timeout at all — if the backend/database stalls (this app's Supabase
+  // connection has genuinely done this mid-session), a plain fetch just
+  // hangs until the browser's own very long default, which for a chat
+  // request or a sidebar click reads to the user as "did my click even
+  // register?" with zero feedback. AbortController + a per-call timeout
+  // gives every network operation a firm, honest upper bound, and a
+  // TIMEOUT is reported as its own distinct case — "this is taking too
+  // long" is a different, more accurate statement than "couldn't
+  // connect at all", and conflating them would be less honest, not simpler.
+  var NETWORK_TIMEOUT_ERROR = 'network-timeout';
+
+  function fetchWithTimeout(url, options, timeoutMs) {
+    var controller = new AbortController();
+    var timer = setTimeout(function () { controller.abort(); }, timeoutMs);
+    return fetch(url, Object.assign({}, options, { signal: controller.signal }))
+      .finally(function () { clearTimeout(timer); })
+      .catch(function (err) {
+        if (err && err.name === 'AbortError') {
+          throw new Error(NETWORK_TIMEOUT_ERROR);
+        }
+        throw err;
+      });
+  }
+
+  function isTimeoutError(err) {
+    return !!err && err.message === NETWORK_TIMEOUT_ERROR;
+  }
+
   // Minimal inline icon set (lucide-style: 24x24, stroke-based) — no icon
   // library dependency, matching this page's zero-build-step design.
   var ICONS = {
@@ -800,21 +862,61 @@
   // first message of a new thread) doesn't need a fresh round-trip.
   var conversationsCache = [];
 
+  var conversationStatusEl = document.getElementById('conversation-status');
+
+  // Shown centered over the chat pane — either a loading state (no retry)
+  // or a failure state (with one). Real gap found live: this whole status
+  // element didn't exist before — a slow or failed conversation switch
+  // just looked like a dead click, with no way to tell "still working" from
+  // "it broke" from "did I even click the right thing".
+  function showConversationStatus(text, retryFn) {
+    emptyState.style.display = 'none';
+    conversationStatusEl.innerHTML =
+      '<div class="status-text">' + escapeHtml(text) + '</div>' +
+      (retryFn ? '<button type="button" class="status-retry">Try again</button>' : '');
+    conversationStatusEl.classList.add('visible');
+    if (retryFn) {
+      conversationStatusEl.querySelector('.status-retry').addEventListener('click', retryFn);
+    }
+  }
+
+  function hideConversationStatus() {
+    conversationStatusEl.classList.remove('visible');
+    conversationStatusEl.innerHTML = '';
+  }
+
   async function loadConversations() {
     try {
-      var res = await fetch('/chat/conversations', { headers: { Authorization: 'Bearer ' + state.token } });
-      if (!res.ok) return;
+      var res = await fetchWithTimeout('/chat/conversations', { headers: { Authorization: 'Bearer ' + state.token } }, 12000);
+      if (!res.ok) throw new Error('failed');
       var body = await res.json();
       conversationsCache = body.conversations || [];
       renderConversations(conversationsCache);
     } catch (err) {
-      // Sidebar is a convenience, not the core chat function — a failed
-      // fetch here just leaves it empty rather than surfacing an error.
+      // The sidebar is a convenience, not the core chat function, so a
+      // failure here shouldn't block or interrupt an active chat — but it
+      // also shouldn't just look like "no chats yet" when it's actually
+      // "couldn't load them". Distinguished with its own message, and left
+      // clickable to retry without reloading the whole page.
+      conversationsListEl.innerHTML = '';
+      var msg = document.createElement('div');
+      msg.id = 'conversations-empty';
+      msg.textContent = isTimeoutError(err)
+        ? 'Taking too long to load your recent chats.'
+        : "Couldn't load your recent chats.";
+      conversationsListEl.appendChild(msg);
+      var retry = document.createElement('button');
+      retry.type = 'button';
+      retry.className = 'conversation-item';
+      retry.textContent = 'Try again';
+      retry.addEventListener('click', loadConversations);
+      conversationsListEl.appendChild(retry);
     }
   }
 
   function clearMessagePane() {
     messagesEl.innerHTML = '';
+    hideConversationStatus();
     emptyState.style.display = 'flex';
   }
 
@@ -822,12 +924,21 @@
     closeSidebarOverlay();
     if (id === state.activeConversationId) return;
 
-    try {
-      var res = await fetch('/chat/conversations/' + id, { headers: { Authorization: 'Bearer ' + state.token } });
-      if (!res.ok) return;
-      var body = await res.json();
+    messagesEl.innerHTML = '';
+    showConversationStatus('Loading conversation…');
 
-      clearMessagePane();
+    try {
+      var res = await fetchWithTimeout('/chat/conversations/' + id, { headers: { Authorization: 'Bearer ' + state.token } }, 12000);
+      if (!res.ok) throw new Error('failed');
+
+      var body;
+      try {
+        body = await res.json();
+      } catch (parseErr) {
+        throw new Error('failed');
+      }
+
+      hideConversationStatus();
       state.activeConversationId = id;
       body.messages.forEach(function (m) {
         addBubble(m.role, m.message, { instant: true });
@@ -835,8 +946,14 @@
       renderConversations(conversationsCache);
       messageInput.focus();
     } catch (err) {
-      // Leave the current pane untouched on failure rather than blanking
-      // a working conversation over a transient network error.
+      // Leave the click retryable in place rather than silently reverting
+      // to whatever was on screen before — the user asked to open THIS
+      // conversation, and a quiet failure back to the old view reads as
+      // "nothing happened", not "that failed".
+      showConversationStatus(
+        isTimeoutError(err) ? 'This is taking longer than expected.' : "Couldn't load this conversation.",
+        function () { openConversation(id); },
+      );
     }
   }
 
@@ -1043,20 +1160,35 @@
     try {
       var res;
       try {
-        res = await fetch('/auth/login', {
+        res = await fetchWithTimeout('/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: email, password: password }),
-        });
+        }, 15000);
       } catch (networkErr) {
         // A raw browser exception here ("Failed to fetch", "NetworkError
         // when attempting to fetch resource") is never something to show a
         // real user — converted to a clean, professional message before it
-        // can ever reach the outer catch below.
-        throw new Error("We couldn't reach the login service. Please check your connection and try again.");
+        // can ever reach the outer catch below. A timeout is reported as
+        // its own distinct, honest case (see fetchWithTimeout above) rather
+        // than folded into the same "couldn't reach" wording.
+        throw new Error(
+          isTimeoutError(networkErr)
+            ? 'The login service is taking longer than expected. Please try again.'
+            : "We couldn't reach the login service. Please check your connection and try again.",
+        );
       }
 
-      var body = await res.json();
+      var body;
+      try {
+        body = await res.json();
+      } catch (parseErr) {
+        // The server responded, but not with valid JSON (a proxy's raw
+        // HTML error page, an empty body, ...) — a raw "Unexpected token"
+        // parse error is exactly the kind of technical leak this whole
+        // pass exists to prevent.
+        throw new Error('Login failed. Please try again.');
+      }
 
       if (!res.ok || !body.success) {
         throw new Error(body.message || 'Login failed. Please try again.');
@@ -1097,7 +1229,13 @@
 
     var res;
     try {
-      res = await fetch('/chat', {
+      // Generous timeout — a real reply can involve up to three sequential
+      // local-LLM calls server-side (intent reranking, reply paraphrasing,
+      // and, on a brand-new conversation, title generation), each with its
+      // own ~6-8s cap, on top of the actual DB query. 30s is long enough to
+      // never cut off a legitimately-slow-but-working reply while still
+      // giving the user a firm answer instead of an indefinite hang.
+      res = await fetchWithTimeout('/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1107,21 +1245,43 @@
         // chat) tells the backend to start a new conversation and hand
         // one back in the response — see respondWithHistory() server-side.
         body: JSON.stringify({ message: text, conversationId: state.activeConversationId || undefined }),
-      });
+      }, 30000);
     } catch (networkErr) {
       // Real gap found live: this used to say "Could not reach the chatbot
       // server. Is it running?" — a raw, technical, backend-implementation-
       // exposing message with zero business reading it that way. A real
       // user doesn't know or care what "the server" is; they just typed a
       // question and got told to go check if a computer is turned on.
+      //
+      // A timeout is reported separately and more honestly — the request
+      // may well have gone through and the backend/database is just slow
+      // (this app's Supabase connection has genuinely stalled mid-session
+      // before), which is a different situation from never connecting at
+      // all, and "couldn't reach" would be a false claim in that case.
       removeTyping();
-      addBubble('bot', "Sorry, I'm having trouble connecting right now. Please try again in a moment.", { isError: true });
+      addBubble(
+        'bot',
+        isTimeoutError(networkErr)
+          ? "This is taking longer than expected. Please try again in a moment."
+          : "Sorry, I'm having trouble connecting right now. Please try again in a moment.",
+        { isError: true },
+      );
       messageInput.focus();
       return;
     }
 
     try {
-      var body = await res.json();
+      var body;
+      try {
+        body = await res.json();
+      } catch (parseErr) {
+        // The server responded, but not with valid JSON — never let a raw
+        // parse-error message reach the chat bubble.
+        removeTyping();
+        addBubble('bot', 'Something went wrong. Please try again.', { isError: true });
+        return;
+      }
+
       removeTyping();
 
       if (res.status === 401) {
@@ -1131,6 +1291,9 @@
       }
 
       if (!res.ok || body.success === false) {
+        // body.message is now populated for every backend failure shape,
+        // including a 429 rate limit (rateLimit.middleware.ts) — this
+        // fallback only ever fires for a genuinely unexpected response.
         addBubble('bot', body.message || 'Something went wrong. Please try again.', { isError: true });
         return;
       }
